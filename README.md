@@ -1,30 +1,32 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Conversor de Moedas para Compras Internacionais
 
-## Getting Started
+## Sobre o Projeto
 
-First, run the development server:
+Conversor de Moedas que utiliza a cotação PTAX do Banco Central para calcular o custo final de compras internacionais no cartão de crédito, incluindo spread bancário e IOF.
 
-```bash
-pnpm dev
-```
+## Funcionalidades
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+*   Busca automática da cotação PTAX de venda mais recente do Banco Central do Brasil.
+*   Seleção de diversas moedas estrangeiras (USD, EUR, GBP, etc.).
+*   Lista configurável de bancos emissores de cartão com seus respectivos percentuais de spread.
+*   Cálculo automático do IOF (Imposto sobre Operações Financeiras) de 3,38%.
+*   Opção para remover o IOF do cálculo e visualizar o valor sem o imposto.
+*   Detalhamento completo do cálculo: valor da PTAX, valor do spread, cotação com spread, valor em BRL sem IOF, valor do IOF e valor total em BRL.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Tecnologias Utilizadas
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+*   Next.js
+*   React
+*   TypeScript
+*   Tailwind CSS
+*   Lucide Icons
+*   API de Cotações do Banco Central do Brasil (Olinda)
+*   Deploy via Vercel
 
-## Learn More
+## Como Usar
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1.  Selecione a moeda estrangeira desejada.
+2.  Insira o valor da compra na moeda estrangeira.
+3.  Escolha o banco emissor do seu cartão de crédito.
+4.  (Opcional) Marque "Remover IOF?" para ver o cálculo sem este imposto.
+5.  Clique em "Calcular Conversão" para ver o resultado detalhado.
