@@ -47,7 +47,7 @@ const BANKS: Record<string, { name: string; spread: number }> = {
   Inter: { name: "Inter", spread: 4.0 },
   Neon: { name: "Neon", spread: 4.0 },
   Nubank: { name: "Nubank", spread: 4.0 },
-  "Nomad / Crédito": { name: "Nomad / Crédito)", spread: 4.0 },
+  "Nomad - Crédito": { name: "Nomad - Crédito", spread: 4.0 },
   "Genial Investimentos": { name: "Genial Investimentos", spread: 4.0 },
   Banrisul: { name: "Banrisul", spread: 3.0 },
   Sicredi: { name: "Sicredi", spread: 1.0 },
