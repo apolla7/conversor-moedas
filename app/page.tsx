@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react"; // Added useEffect
+import React, { useState, useCallback, useEffect } from "react";
 import {
   ArrowRightLeft,
   Landmark,
@@ -12,7 +12,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
-// CURRENCIES and BANKS constants remain the same...
+// --- CONSTANTS ---
 const CURRENCIES = [
   { code: "USD", name: "Dólar Americano" },
   { code: "EUR", name: "Euro" },
@@ -47,7 +47,7 @@ const BANKS: Record<string, { name: string; spread: number }> = {
   Inter: { name: "Inter", spread: 4.0 },
   Neon: { name: "Neon", spread: 4.0 },
   Nubank: { name: "Nubank", spread: 4.0 },
-  "Nomad (função crédito)": { name: "Nomad (função crédito)", spread: 4.0 },
+  "Nomad / Crédito": { name: "Nomad / Crédito)", spread: 4.0 },
   "Genial Investimentos": { name: "Genial Investimentos", spread: 4.0 },
   Banrisul: { name: "Banrisul", spread: 3.0 },
   Sicredi: { name: "Sicredi", spread: 1.0 },
@@ -60,6 +60,7 @@ const BANKS: Record<string, { name: string; spread: number }> = {
 
 const IOF_RATE = 0.0338; // 3.38%
 
+// --- INTERFACES ---
 interface CotacaoAPI {
   cotacaoVenda: number;
   dataHoraCotacao: string;
@@ -79,9 +80,29 @@ interface CalculationResult {
   totalAmountInBRL: number;
   foreignCurrencyAmount: number;
   foreignCurrencyCode: string;
-  iofRemoved: boolean; // Added this field
+  iofRemoved: boolean;
 }
 
+interface ResultDisplayItem {
+  icon: React.ReactNode; // Using React.ReactNode
+  label: string;
+  value: string;
+  isTotal?: boolean;
+}
+
+// Helper interfaces for bank grouping
+interface BankOption {
+  key: string;
+  name: string;
+  spread: number;
+}
+
+interface BankGroup {
+  label: string;
+  banks: BankOption[];
+}
+
+// --- HELPER FUNCTIONS ---
 const formatDateForAPI = (date: Date): string => {
   const month = (date.getMonth() + 1).toString().padStart(2, "0");
   const day = date.getDate().toString().padStart(2, "0");
@@ -89,6 +110,62 @@ const formatDateForAPI = (date: Date): string => {
   return `${month}-${day}-${year}`;
 };
 
+// Function to create grouped bank options
+const createGroupedBankOptions = (
+  banksData: Record<string, { name: string; spread: number }>
+): BankGroup[] => {
+  const allBanks: BankOption[] = Object.entries(banksData).map(
+    ([key, bankDetails]) => ({
+      key,
+      name: bankDetails.name,
+      spread: bankDetails.spread,
+    })
+  );
+
+  allBanks.sort((a, b) => {
+    if (a.spread < b.spread) return -1;
+    if (a.spread > b.spread) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  const groupDefinitions: BankGroup[] = [
+    { label: "Spread 0%", banks: [] },
+    { label: "Spread até 1%", banks: [] },
+    { label: "Spread até 2%", banks: [] },
+    { label: "Spread até 3%", banks: [] },
+    { label: "Spread até 4%", banks: [] },
+    { label: "Spread até 5%", banks: [] },
+    { label: "Spread até 6%", banks: [] },
+    { label: "Spread acima de 6%", banks: [] },
+  ];
+
+  allBanks.forEach((bank) => {
+    if (bank.spread === 0) {
+      groupDefinitions[0].banks.push(bank);
+    } else if (bank.spread > 0 && bank.spread <= 1) {
+      groupDefinitions[1].banks.push(bank);
+    } else if (bank.spread > 1 && bank.spread <= 2) {
+      groupDefinitions[2].banks.push(bank);
+    } else if (bank.spread > 2 && bank.spread <= 3) {
+      groupDefinitions[3].banks.push(bank);
+    } else if (bank.spread > 3 && bank.spread <= 4) {
+      groupDefinitions[4].banks.push(bank);
+    } else if (bank.spread > 4 && bank.spread <= 5) {
+      groupDefinitions[5].banks.push(bank);
+    } else if (bank.spread > 5 && bank.spread <= 6) {
+      groupDefinitions[6].banks.push(bank);
+    } else if (bank.spread > 6) {
+      groupDefinitions[7].banks.push(bank);
+    }
+  });
+
+  return groupDefinitions.filter((group) => group.banks.length > 0);
+};
+
+// Pre-calculate the grouped banks
+const GROUPED_BANKS = createGroupedBankOptions(BANKS);
+
+// --- COMPONENT ---
 const CurrencyConverterPage = () => {
   const [selectedCurrency, setSelectedCurrency] = useState<string>(
     CURRENCIES[0].code
@@ -97,22 +174,18 @@ const CurrencyConverterPage = () => {
   const [selectedBankKey, setSelectedBankKey] = useState<string>(
     Object.keys(BANKS)[11] // Default to Porto Bank
   );
-  const [removeIOF, setRemoveIOF] = useState<boolean>(false); // State for the checkbox
+  const [removeIOF, setRemoveIOF] = useState<boolean>(false);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CalculationResult | null>(null);
 
-  // Clear results if primary inputs change
   useEffect(() => {
     setResult(null);
-    // setError(null); // Optionally clear error too, or let it persist until next calc
   }, [selectedCurrency, purchaseAmount, selectedBankKey]);
 
   const handleCalculate = useCallback(async () => {
     setError(null);
-    // Don't set result to null here if we want useEffect for removeIOF to work on existing data
-    // setResult(null); // Let's remove this line from here
 
     const amount = parseFloat(purchaseAmount);
     if (isNaN(amount) || amount <= 0) {
@@ -131,11 +204,11 @@ const CurrencyConverterPage = () => {
     setIsLoading(true);
 
     const today = new Date();
-    const fiveDaysAgo = new Date();
-    fiveDaysAgo.setDate(today.getDate() - 7);
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(today.getDate() - 7);
 
     const endDate = formatDateForAPI(today);
-    const startDate = formatDateForAPI(fiveDaysAgo);
+    const startDate = formatDateForAPI(sevenDaysAgo);
 
     const apiUrl = `https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoMoedaPeriodo(moeda=@moeda,dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)?@moeda='${selectedCurrency}'&@dataInicial='${startDate}'&@dataFinalCotacao='${endDate}'&$top=100&$filter=tipoBoletim eq 'Fechamento'&$orderby=dataHoraCotacao desc&$format=json`;
 
@@ -153,7 +226,7 @@ const CurrencyConverterPage = () => {
         setError(
           "Não foi possível obter a cotação PTAX para a moeda selecionada no período. Verifique se a moeda é coberta pelo PTAX ou tente mais tarde."
         );
-        setResult(null); // Clear result on API error
+        setResult(null);
         setIsLoading(false);
         return;
       }
@@ -165,7 +238,7 @@ const CurrencyConverterPage = () => {
       const rateWithSpread = ptaxRate + bankSpreadValue;
 
       const amountInBRLNoIOF = amount * rateWithSpread;
-      const iofValue = removeIOF ? 0 : amountInBRLNoIOF * IOF_RATE; // Conditional IOF calculation
+      const iofValue = removeIOF ? 0 : amountInBRLNoIOF * IOF_RATE;
       const totalAmountInBRL = amountInBRLNoIOF + iofValue;
 
       setResult({
@@ -178,7 +251,7 @@ const CurrencyConverterPage = () => {
         totalAmountInBRL,
         foreignCurrencyAmount: amount,
         foreignCurrencyCode: selectedCurrency,
-        iofRemoved: removeIOF, // Store checkbox state in result
+        iofRemoved: removeIOF,
       });
     } catch (err) {
       console.error(err);
@@ -187,38 +260,11 @@ const CurrencyConverterPage = () => {
           ? err.message
           : "Ocorreu um erro desconhecido ao buscar ou processar os dados."
       );
-      setResult(null); // Clear result on general error
+      setResult(null);
     }
     setIsLoading(false);
-  }, [purchaseAmount, selectedCurrency, selectedBankKey, removeIOF]); // Added removeIOF to dependencies
+  }, [purchaseAmount, selectedCurrency, selectedBankKey, removeIOF]);
 
-  // useEffect to update result if removeIOF is toggled after a calculation
-  useEffect(() => {
-    if (result) {
-      // Only run if there's an existing result
-      const newIofValue = removeIOF ? 0 : result.amountInBRLNoIOF * IOF_RATE;
-      const newTotalAmountInBRL = result.amountInBRLNoIOF + newIofValue;
-
-      // Update result state only if relevant values changed
-      if (
-        newIofValue !== result.iofValue ||
-        newTotalAmountInBRL !== result.totalAmountInBRL ||
-        removeIOF !== result.iofRemoved
-      ) {
-        setResult((prevResult) => ({
-          ...prevResult!,
-          iofValue: newIofValue,
-          totalAmountInBRL: newTotalAmountInBRL,
-          iofRemoved: removeIOF,
-        }));
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [removeIOF, result?.amountInBRLNoIOF]); // Rerun if removeIOF changes or the base for IOF calc changes
-  // result?.amountInBRLNoIOF is technically covered by `result` dependency below.
-  // Simplified dependency array: [removeIOF, result]
-
-  // Corrected useEffect dependency for IOF update:
   useEffect(() => {
     if (!result) return;
 
@@ -238,7 +284,7 @@ const CurrencyConverterPage = () => {
       }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [removeIOF, result]); // This useEffect reacts to changes in `removeIOF` or `result` itself.
+  }, [removeIOF, result]);
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-100 flex flex-col items-center justify-center p-4 selection:bg-sky-500 selection:text-white">
@@ -298,7 +344,7 @@ const CurrencyConverterPage = () => {
             </div>
           </div>
 
-          {/* Bank Select */}
+          {/* Bank Select with Grouping */}
           <div>
             <label
               htmlFor="bank"
@@ -316,10 +362,14 @@ const CurrencyConverterPage = () => {
                 onChange={(e) => setSelectedBankKey(e.target.value)}
                 className="w-full pl-10 pr-3 py-2.5 bg-slate-700 border border-slate-600 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none appearance-none"
               >
-                {Object.entries(BANKS).map(([key, bank]) => (
-                  <option key={key} value={key}>
-                    {bank.name} ({bank.spread.toFixed(2)}% spread)
-                  </option>
+                {GROUPED_BANKS.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.banks.map((bank) => (
+                      <option key={bank.key} value={bank.key}>
+                        {bank.name} ({bank.spread.toFixed(2)}% spread)
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
@@ -327,8 +377,6 @@ const CurrencyConverterPage = () => {
 
           {/* Remove IOF Checkbox */}
           <div className="pt-1">
-            {" "}
-            {/* Adjusted padding slightly */}
             <label
               htmlFor="remove-iof"
               className="flex items-center space-x-2 text-slate-300 cursor-pointer select-none"
@@ -378,7 +426,7 @@ const CurrencyConverterPage = () => {
             </h2>
 
             {(() => {
-              const items = [
+              const items: ResultDisplayItem[] = [
                 {
                   icon: <TrendingUp className="h-5 w-5" />,
                   label: `Cotação ${result.foreignCurrencyCode} (PTAX Venda)`,
@@ -408,7 +456,6 @@ const CurrencyConverterPage = () => {
               ];
 
               if (!result.iofRemoved) {
-                // Only add IOF row if it's not removed
                 items.push({
                   icon: <Percent className="h-5 w-5" />,
                   label: `Valor do IOF (${(IOF_RATE * 100).toFixed(2)}%)`,
