@@ -112,6 +112,15 @@ const formatDateForAPI = (date: Date): string => {
   return `${month}-${day}-${year}`;
 };
 
+// NEW HELPER FUNCTION for Brazilian currency formatting
+const formatCurrencyBR = (value: number, precision: number = 2): string => {
+  if (isNaN(value)) {
+    // Handles NaN by returning a string like "0,00" or "0,0000" based on precision
+    return "0," + "0".repeat(precision);
+  }
+  return value.toFixed(precision).replace(".", ",");
+};
+
 const formatPtaxDateTime = (dateTimeString: string): string => {
   try {
     const date = new Date(dateTimeString);
@@ -215,7 +224,8 @@ const CurrencyConverterPage = () => {
   const handleCalculate = useCallback(async () => {
     setError(null);
 
-    const amount = parseFloat(purchaseAmount);
+    // MODIFIED: Replace comma with dot for parsing, in case user inputs "100,50"
+    const amount = parseFloat(purchaseAmount.replace(",", "."));
     if (isNaN(amount) || amount <= 0) {
       setError("Por favor, insira um valor de compra válido e positivo.");
       return;
@@ -365,11 +375,12 @@ const CurrencyConverterPage = () => {
                 <DollarSign className="h-5 w-5 text-slate-400" />
               </div>
               <input
-                type="number"
+                type="number" // Keep type="number" for better mobile UX, parsing handles comma
                 id="amount"
                 value={purchaseAmount}
                 onChange={(e) => setPurchaseAmount(e.target.value)}
-                placeholder="Ex: 100.00"
+                // MODIFIED: Placeholder
+                placeholder="Ex: 100,00"
                 className="w-full pl-10 pr-3 py-2.5 bg-slate-700 border border-slate-600 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
               />
             </div>
@@ -397,7 +408,8 @@ const CurrencyConverterPage = () => {
                   <optgroup key={group.label} label={group.label}>
                     {group.banks.map((bank) => (
                       <option key={bank.key} value={bank.key}>
-                        {bank.name} ({bank.spread.toFixed(2)}% spread)
+                        {/* MODIFIED: Use formatCurrencyBR for spread display */}
+                        {bank.name} ({formatCurrencyBR(bank.spread, 2)}% spread)
                       </option>
                     ))}
                   </optgroup>
@@ -466,36 +478,48 @@ const CurrencyConverterPage = () => {
                 {
                   icon: <TrendingUp className="h-5 w-5" />,
                   label: `Cotação ${result.foreignCurrencyCode} (PTAX Venda)`,
-                  value: `R$ ${result.ptaxRate.toFixed(4)}`,
+                  // MODIFIED: Use formatCurrencyBR
+                  value: `R$ ${formatCurrencyBR(result.ptaxRate, 4)}`,
                 },
                 {
                   icon: <Percent className="h-5 w-5" />,
                   label: `Spread do Banco (${
                     BANKS[selectedBankKey].name
-                  } - ${result.bankSpreadPercentage.toFixed(2)}%)`,
-                  value: `+ R$ ${result.bankSpreadValue.toFixed(4)}`,
+                    // MODIFIED: Use formatCurrencyBR for percentage
+                  } - ${formatCurrencyBR(result.bankSpreadPercentage, 2)}%)`,
+                  // MODIFIED: Use formatCurrencyBR
+                  value: `+ R$ ${formatCurrencyBR(result.bankSpreadValue, 4)}`,
                 },
                 {
                   icon: <TrendingUp className="h-5 w-5" />,
                   label: `Cotação ${result.foreignCurrencyCode} com Spread`,
-                  value: `R$ ${result.rateWithSpread.toFixed(4)}`,
+                  // MODIFIED: Use formatCurrencyBR
+                  value: `R$ ${formatCurrencyBR(result.rateWithSpread, 4)}`,
                 },
                 {
                   icon: <DollarSign className="h-5 w-5" />,
                   label: `Valor da Compra (${
                     result.foreignCurrencyCode
-                  } ${result.foreignCurrencyAmount.toFixed(
+                    // MODIFIED: Use formatCurrencyBR for foreign amount
+                  } ${formatCurrencyBR(
+                    result.foreignCurrencyAmount,
                     2
                   )}) em BRL (sem IOF)`,
-                  value: `R$ ${result.amountInBRLNoIOF.toFixed(2)}`,
+                  // MODIFIED: Use formatCurrencyBR
+                  value: `R$ ${formatCurrencyBR(result.amountInBRLNoIOF, 2)}`,
                 },
               ];
 
               if (!result.iofRemoved) {
                 items.push({
                   icon: <Percent className="h-5 w-5" />,
-                  label: `Valor do IOF (${(IOF_RATE * 100).toFixed(2)}%)`,
-                  value: `+ R$ ${result.iofValue.toFixed(2)}`,
+                  // MODIFIED: Use formatCurrencyBR for IOF rate percentage
+                  label: `Valor do IOF (${formatCurrencyBR(
+                    IOF_RATE * 100,
+                    2
+                  )}%)`,
+                  // MODIFIED: Use formatCurrencyBR for IOF value
+                  value: `+ R$ ${formatCurrencyBR(result.iofValue, 2)}`,
                 });
               }
 
@@ -504,7 +528,8 @@ const CurrencyConverterPage = () => {
                 label: `Valor Total da Compra em BRL ${
                   result.iofRemoved ? "(IOF Removido)" : ""
                 }`,
-                value: `R$ ${result.totalAmountInBRL.toFixed(2)}`,
+                // MODIFIED: Use formatCurrencyBR
+                value: `R$ ${formatCurrencyBR(result.totalAmountInBRL, 2)}`,
                 isTotal: true,
               });
 
