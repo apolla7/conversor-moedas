@@ -10,7 +10,7 @@ import {
   Globe,
   Loader2,
   AlertTriangle,
-  Clock, // Import Clock icon for PTAX update time
+  Clock,
 } from "lucide-react";
 
 // --- CONSTANTS ---
@@ -32,7 +32,6 @@ const BANKS: Record<string, { name: string; spread: number }> = {
   "BTG Pactual": { name: "BTG Pactual", spread: 6.0 },
   Santander: { name: "Santander", spread: 6.0 },
   Pan: { name: "Pan", spread: 6.0 },
-  // MODIFICATION: Separated "Itaú / Credicard"
   Itaú: { name: "Itaú", spread: 5.5 },
   Credicard: { name: "Credicard", spread: 5.5 },
   Bradesco: { name: "Bradesco", spread: 5.3 },
@@ -75,7 +74,7 @@ interface ApiResponse {
 
 interface CalculationResult {
   ptaxRate: number;
-  ptaxDateTime: string; // MODIFICATION: Added PTAX date/time
+  ptaxDateTime: string;
   bankSpreadPercentage: number;
   bankSpreadValue: number;
   rateWithSpread: number;
@@ -113,21 +112,17 @@ const formatDateForAPI = (date: Date): string => {
   return `${month}-${day}-${year}`;
 };
 
-// MODIFICATION: Added helper function to format PTAX date/time
 const formatPtaxDateTime = (dateTimeString: string): string => {
   try {
-    // dateTimeString is like "2025-05-07 13:09:26.499"
     const date = new Date(dateTimeString);
     if (isNaN(date.getTime())) {
-      // Check if date is valid
-      // Fallback for unexpected invalid date strings
       const parts = dateTimeString.split(" ");
       if (parts.length > 1) {
         const datePart = parts[0].split("-").reverse().join("/");
         const timePart = parts[1].substring(0, 5); // HH:MM
         return `${datePart} às ${timePart}`;
       }
-      return dateTimeString; // Return as is if parsing fails
+      return dateTimeString;
     }
     const day = date.getDate().toString().padStart(2, "0");
     const month = (date.getMonth() + 1).toString().padStart(2, "0");
@@ -137,14 +132,13 @@ const formatPtaxDateTime = (dateTimeString: string): string => {
     return `${day}/${month}/${year} às ${hours}:${minutes}`;
   } catch (e) {
     console.warn("Could not parse PTAX date time:", dateTimeString, e);
-    // A simpler fallback if new Date() constructor or methods fail
     const parts = dateTimeString.split(" ");
     if (parts.length > 1) {
       const datePart = parts[0].split("-").reverse().join("/"); // DD/MM/YYYY
       const timePart = parts[1].substring(0, 5); // HH:MM
       return `${datePart} às ${timePart}`;
     }
-    return dateTimeString; // Return original string if all else fails
+    return dateTimeString;
   }
 };
 
@@ -207,7 +201,6 @@ const CurrencyConverterPage = () => {
     CURRENCIES[0].code
   );
   const [purchaseAmount, setPurchaseAmount] = useState<string>("100");
-  // MODIFICATION: Default to "Porto Bank" by its key for robustness
   const [selectedBankKey, setSelectedBankKey] = useState<string>("Porto Bank");
   const [removeIOF, setRemoveIOF] = useState<boolean>(false);
 
@@ -266,9 +259,9 @@ const CurrencyConverterPage = () => {
         return;
       }
 
-      const latestQuote = data.value[0]; // API sorts by dataHoraCotacao desc
+      const latestQuote = data.value[0];
       const ptaxRate = latestQuote.cotacaoVenda;
-      const ptaxDateTime = latestQuote.dataHoraCotacao; // MODIFICATION: Get PTAX date/time
+      const ptaxDateTime = latestQuote.dataHoraCotacao;
 
       const bank = BANKS[selectedBankKey];
       const bankSpreadPercentage = bank.spread;
@@ -281,7 +274,7 @@ const CurrencyConverterPage = () => {
 
       setResult({
         ptaxRate,
-        ptaxDateTime, // MODIFICATION: Store PTAX date/time
+        ptaxDateTime,
         bankSpreadPercentage,
         bankSpreadValue,
         rateWithSpread,
@@ -322,7 +315,7 @@ const CurrencyConverterPage = () => {
         iofRemoved: removeIOF,
       }));
     }
-  }, [removeIOF, result]); // Removed result from dependency array here as it caused re-runs, it should only run on removeIOF change when result exists. Re-added because the linter expects it if used inside. Kept as is for now, assuming the original logic was intentional.
+  }, [removeIOF, result]);
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-100 flex flex-col items-center justify-center p-4 selection:bg-sky-500 selection:text-white">
@@ -465,7 +458,6 @@ const CurrencyConverterPage = () => {
 
             {(() => {
               const items: ResultDisplayItem[] = [
-                // MODIFICATION: Added PTAX Update Time item
                 {
                   icon: <Clock className="h-5 w-5" />,
                   label: `Última Atualização PTAX`,
@@ -516,10 +508,6 @@ const CurrencyConverterPage = () => {
                 isTotal: true,
               });
 
-              // MODIFICATION: Adjusted color grouping logic
-              // Color A: PTAX Date, PTAX Rate, Spread, Rate with Spread (4 items)
-              // Color B: Value before IOF, IOF (1 or 2 items)
-              // Color C: Total
               const NUM_COLOR_A_ITEMS = 4;
 
               return items.map((item, index) => (
@@ -561,8 +549,16 @@ const CurrencyConverterPage = () => {
         )}
       </div>
       <footer className="text-center text-sm text-slate-500 mt-8 pb-4">
-        Cotações fornecidas pelo Banco Central do Brasil (PTAX). Spread e IOF
-        aplicados.
+        Cotações fornecidas pelo Banco Central do Brasil. Spread e IOF
+        aplicados.<br></br>Lista de Spread atualizada em 22/03/2025. (
+        <a
+          href="https://www.melhorescartoes.com.br/dolar-no-cartao-de-credito-spread.html"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Fonte
+        </a>
+        )
       </footer>
     </main>
   );
