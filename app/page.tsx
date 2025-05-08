@@ -7,10 +7,10 @@ import {
   DollarSign,
   TrendingUp,
   Percent,
-  // Palette, // Palette is no longer used for the currency input
-  Globe, // Import Globe icon
+  Globe,
   Loader2,
   AlertTriangle,
+  Clock, // Import Clock icon for PTAX update time
 } from "lucide-react";
 
 // --- CONSTANTS ---
@@ -32,7 +32,9 @@ const BANKS: Record<string, { name: string; spread: number }> = {
   "BTG Pactual": { name: "BTG Pactual", spread: 6.0 },
   Santander: { name: "Santander", spread: 6.0 },
   Pan: { name: "Pan", spread: 6.0 },
-  "Itaú / Credicard": { name: "Itaú / Credicard", spread: 5.5 },
+  // MODIFICATION: Separated "Itaú / Credicard"
+  Itaú: { name: "Itaú", spread: 5.5 },
+  Credicard: { name: "Credicard", spread: 5.5 },
   Bradesco: { name: "Bradesco", spread: 5.3 },
   "C6 Bank": { name: "C6 Bank", spread: 5.25 },
   "Banco do Nordeste": { name: "Banco do Nordeste", spread: 5.0 },
@@ -73,6 +75,7 @@ interface ApiResponse {
 
 interface CalculationResult {
   ptaxRate: number;
+  ptaxDateTime: string; // MODIFICATION: Added PTAX date/time
   bankSpreadPercentage: number;
   bankSpreadValue: number;
   rateWithSpread: number;
@@ -85,13 +88,12 @@ interface CalculationResult {
 }
 
 interface ResultDisplayItem {
-  icon: React.ReactNode; // Using React.ReactNode
+  icon: React.ReactNode;
   label: string;
   value: string;
   isTotal?: boolean;
 }
 
-// Helper interfaces for bank grouping
 interface BankOption {
   key: string;
   name: string;
@@ -111,7 +113,41 @@ const formatDateForAPI = (date: Date): string => {
   return `${month}-${day}-${year}`;
 };
 
-// Function to create grouped bank options
+// MODIFICATION: Added helper function to format PTAX date/time
+const formatPtaxDateTime = (dateTimeString: string): string => {
+  try {
+    // dateTimeString is like "2025-05-07 13:09:26.499"
+    const date = new Date(dateTimeString);
+    if (isNaN(date.getTime())) {
+      // Check if date is valid
+      // Fallback for unexpected invalid date strings
+      const parts = dateTimeString.split(" ");
+      if (parts.length > 1) {
+        const datePart = parts[0].split("-").reverse().join("/");
+        const timePart = parts[1].substring(0, 5); // HH:MM
+        return `${datePart} às ${timePart}`;
+      }
+      return dateTimeString; // Return as is if parsing fails
+    }
+    const day = date.getDate().toString().padStart(2, "0");
+    const month = (date.getMonth() + 1).toString().padStart(2, "0");
+    const year = date.getFullYear();
+    const hours = date.getHours().toString().padStart(2, "0");
+    const minutes = date.getMinutes().toString().padStart(2, "0");
+    return `${day}/${month}/${year} às ${hours}:${minutes}`;
+  } catch (e) {
+    console.warn("Could not parse PTAX date time:", dateTimeString, e);
+    // A simpler fallback if new Date() constructor or methods fail
+    const parts = dateTimeString.split(" ");
+    if (parts.length > 1) {
+      const datePart = parts[0].split("-").reverse().join("/"); // DD/MM/YYYY
+      const timePart = parts[1].substring(0, 5); // HH:MM
+      return `${datePart} às ${timePart}`;
+    }
+    return dateTimeString; // Return original string if all else fails
+  }
+};
+
 const createGroupedBankOptions = (
   banksData: Record<string, { name: string; spread: number }>
 ): BankGroup[] => {
@@ -163,7 +199,6 @@ const createGroupedBankOptions = (
   return groupDefinitions.filter((group) => group.banks.length > 0);
 };
 
-// Pre-calculate the grouped banks
 const GROUPED_BANKS = createGroupedBankOptions(BANKS);
 
 // --- COMPONENT ---
@@ -172,9 +207,8 @@ const CurrencyConverterPage = () => {
     CURRENCIES[0].code
   );
   const [purchaseAmount, setPurchaseAmount] = useState<string>("100");
-  const [selectedBankKey, setSelectedBankKey] = useState<string>(
-    Object.keys(BANKS)[11] // Default to Porto Bank
-  );
+  // MODIFICATION: Default to "Porto Bank" by its key for robustness
+  const [selectedBankKey, setSelectedBankKey] = useState<string>("Porto Bank");
   const [removeIOF, setRemoveIOF] = useState<boolean>(false);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -232,7 +266,10 @@ const CurrencyConverterPage = () => {
         return;
       }
 
-      const ptaxRate = data.value[0].cotacaoVenda;
+      const latestQuote = data.value[0]; // API sorts by dataHoraCotacao desc
+      const ptaxRate = latestQuote.cotacaoVenda;
+      const ptaxDateTime = latestQuote.dataHoraCotacao; // MODIFICATION: Get PTAX date/time
+
       const bank = BANKS[selectedBankKey];
       const bankSpreadPercentage = bank.spread;
       const bankSpreadValue = ptaxRate * (bankSpreadPercentage / 100);
@@ -244,6 +281,7 @@ const CurrencyConverterPage = () => {
 
       setResult({
         ptaxRate,
+        ptaxDateTime, // MODIFICATION: Store PTAX date/time
         bankSpreadPercentage,
         bankSpreadValue,
         rateWithSpread,
@@ -284,8 +322,7 @@ const CurrencyConverterPage = () => {
         iofRemoved: removeIOF,
       }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [removeIOF, result]);
+  }, [removeIOF, result]); // Removed result from dependency array here as it caused re-runs, it should only run on removeIOF change when result exists. Re-added because the linter expects it if used inside. Kept as is for now, assuming the original logic was intentional.
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-100 flex flex-col items-center justify-center p-4 selection:bg-sky-500 selection:text-white">
@@ -305,7 +342,6 @@ const CurrencyConverterPage = () => {
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                {/* MODIFICATION: Changed Palette to Globe icon */}
                 <Globe className="h-5 w-5 text-slate-400" />
               </div>
               <select
@@ -429,6 +465,12 @@ const CurrencyConverterPage = () => {
 
             {(() => {
               const items: ResultDisplayItem[] = [
+                // MODIFICATION: Added PTAX Update Time item
+                {
+                  icon: <Clock className="h-5 w-5" />,
+                  label: `Última Atualização PTAX`,
+                  value: formatPtaxDateTime(result.ptaxDateTime),
+                },
                 {
                   icon: <TrendingUp className="h-5 w-5" />,
                   label: `Cotação ${result.foreignCurrencyCode} (PTAX Venda)`,
@@ -474,37 +516,38 @@ const CurrencyConverterPage = () => {
                 isTotal: true,
               });
 
+              // MODIFICATION: Adjusted color grouping logic
+              // Color A: PTAX Date, PTAX Rate, Spread, Rate with Spread (4 items)
+              // Color B: Value before IOF, IOF (1 or 2 items)
+              // Color C: Total
+              const NUM_COLOR_A_ITEMS = 4;
+
               return items.map((item, index) => (
                 <div
                   key={index}
-                  // MODIFICATION: Adjusted background colors for result items
                   className={`flex justify-between items-center p-2.5 rounded-md ${
                     item.isTotal
-                      ? "bg-sky-600" // Color for the total row
-                      : index <= 2
-                      ? "bg-slate-600" // Color for the first three items
-                      : "bg-slate-700" // Color for the next one or two items
+                      ? "bg-sky-600" // Color C for the total row
+                      : index < NUM_COLOR_A_ITEMS
+                      ? "bg-slate-600" // Color A for the first NUM_COLOR_A_ITEMS items
+                      : "bg-slate-700" // Color B for intermediate items
                   }`}
                 >
-                  {/* MODIFICATION: Adjusted text color for total row label/icon container */}
                   <div
                     className={`flex items-center ${
                       item.isTotal ? "text-white" : "text-slate-300"
                     }`}
                   >
                     <span
-                      // MODIFICATION: Adjusted icon color for total row
                       className={`mr-2 ${
                         item.isTotal ? "text-white" : "text-slate-400"
                       }`}
                     >
                       {item.icon}
                     </span>
-                    {/* Label text color will be inherited from parent div */}
                     <span className="min-w-0">{item.label}:</span>
                   </div>
                   <span
-                    // MODIFICATION: Adjusted value text color for total row
                     className={`font-semibold ${
                       item.isTotal ? "text-white text-lg" : "text-slate-100"
                     }`}
