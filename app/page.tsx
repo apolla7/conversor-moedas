@@ -5,7 +5,6 @@ import {
   ArrowRightLeft,
   Landmark,
   DollarSign,
-  TrendingUp,
   Percent,
   Globe,
   Loader2,
@@ -112,10 +111,8 @@ const formatDateForAPI = (date: Date): string => {
   return `${month}-${day}-${year}`;
 };
 
-// NEW HELPER FUNCTION for Brazilian currency formatting
 const formatCurrencyBR = (value: number, precision: number = 2): string => {
   if (isNaN(value)) {
-    // Handles NaN by returning a string like "0,00" or "0,0000" based on precision
     return "0," + "0".repeat(precision);
   }
   return value.toFixed(precision).replace(".", ",");
@@ -224,7 +221,6 @@ const CurrencyConverterPage = () => {
   const handleCalculate = useCallback(async () => {
     setError(null);
 
-    // MODIFIED: Replace comma with dot for parsing, in case user inputs "100,50"
     const amount = parseFloat(purchaseAmount.replace(",", "."));
     if (isNaN(amount) || amount <= 0) {
       setError("Por favor, insira um valor de compra válido e positivo.");
@@ -375,7 +371,7 @@ const CurrencyConverterPage = () => {
                 <DollarSign className="h-5 w-5 text-slate-400" />
               </div>
               <input
-                type="number" // Keep type="number" for better mobile UX, parsing handles comma
+                type="number"
                 id="amount"
                 value={purchaseAmount}
                 onChange={(e) => setPurchaseAmount(e.target.value)}
@@ -476,36 +472,30 @@ const CurrencyConverterPage = () => {
                   value: formatPtaxDateTime(result.ptaxDateTime),
                 },
                 {
-                  icon: <TrendingUp className="h-5 w-5" />,
+                  icon: <Globe className="h-5 w-5" />,
                   label: `Cotação ${result.foreignCurrencyCode} (PTAX Venda)`,
-                  // MODIFIED: Use formatCurrencyBR
                   value: `R$ ${formatCurrencyBR(result.ptaxRate, 4)}`,
                 },
                 {
                   icon: <Percent className="h-5 w-5" />,
                   label: `Spread do Banco (${
                     BANKS[selectedBankKey].name
-                    // MODIFIED: Use formatCurrencyBR for percentage
                   } - ${formatCurrencyBR(result.bankSpreadPercentage, 2)}%)`,
-                  // MODIFIED: Use formatCurrencyBR
                   value: `+ R$ ${formatCurrencyBR(result.bankSpreadValue, 4)}`,
                 },
                 {
-                  icon: <TrendingUp className="h-5 w-5" />,
+                  icon: <Globe className="h-5 w-5" />,
                   label: `Cotação ${result.foreignCurrencyCode} com Spread`,
-                  // MODIFIED: Use formatCurrencyBR
                   value: `R$ ${formatCurrencyBR(result.rateWithSpread, 4)}`,
                 },
                 {
                   icon: <DollarSign className="h-5 w-5" />,
                   label: `Valor da Compra (${
                     result.foreignCurrencyCode
-                    // MODIFIED: Use formatCurrencyBR for foreign amount
                   } ${formatCurrencyBR(
                     result.foreignCurrencyAmount,
                     2
                   )}) em BRL (sem IOF)`,
-                  // MODIFIED: Use formatCurrencyBR
                   value: `R$ ${formatCurrencyBR(result.amountInBRLNoIOF, 2)}`,
                 },
               ];
@@ -513,12 +503,10 @@ const CurrencyConverterPage = () => {
               if (!result.iofRemoved) {
                 items.push({
                   icon: <Percent className="h-5 w-5" />,
-                  // MODIFIED: Use formatCurrencyBR for IOF rate percentage
                   label: `Valor do IOF (${formatCurrencyBR(
                     IOF_RATE * 100,
                     2
                   )}%)`,
-                  // MODIFIED: Use formatCurrencyBR for IOF value
                   value: `+ R$ ${formatCurrencyBR(result.iofValue, 2)}`,
                 });
               }
@@ -574,7 +562,7 @@ const CurrencyConverterPage = () => {
         )}
       </div>
       <footer className="text-center text-sm text-slate-500 mt-8 pb-4">
-        Cotações fornecidas pelo Banco Central do Brasil. Spread e IOF
+        Cotações PTAX fornecidas pelo Banco Central do Brasil. Spread e IOF
         aplicados.<br></br>Lista de Spread atualizada em 22/03/2025. (
         <a
           href="https://www.melhorescartoes.com.br/dolar-no-cartao-de-credito-spread.html"
