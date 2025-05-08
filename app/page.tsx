@@ -7,7 +7,8 @@ import {
   DollarSign,
   TrendingUp,
   Percent,
-  Palette,
+  // Palette, // Palette is no longer used for the currency input
+  Globe, // Import Globe icon
   Loader2,
   AlertTriangle,
 } from "lucide-react";
@@ -304,7 +305,8 @@ const CurrencyConverterPage = () => {
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Palette className="h-5 w-5 text-slate-400" />
+                {/* MODIFICATION: Changed Palette to Globe icon */}
+                <Globe className="h-5 w-5 text-slate-400" />
               </div>
               <select
                 id="currency"
@@ -475,23 +477,36 @@ const CurrencyConverterPage = () => {
               return items.map((item, index) => (
                 <div
                   key={index}
+                  // MODIFICATION: Adjusted background colors for result items
                   className={`flex justify-between items-center p-2.5 rounded-md ${
-                    item.isTotal ? "bg-sky-700/30" : "bg-slate-700/50"
+                    item.isTotal
+                      ? "bg-sky-600" // Color for the total row
+                      : index <= 2
+                      ? "bg-slate-600" // Color for the first three items
+                      : "bg-slate-700" // Color for the next one or two items
                   }`}
                 >
-                  <div className="flex items-center text-slate-300">
+                  {/* MODIFICATION: Adjusted text color for total row label/icon container */}
+                  <div
+                    className={`flex items-center ${
+                      item.isTotal ? "text-white" : "text-slate-300"
+                    }`}
+                  >
                     <span
+                      // MODIFICATION: Adjusted icon color for total row
                       className={`mr-2 ${
-                        item.isTotal ? "text-sky-300" : "text-slate-400"
+                        item.isTotal ? "text-white" : "text-slate-400"
                       }`}
                     >
                       {item.icon}
                     </span>
+                    {/* Label text color will be inherited from parent div */}
                     <span className="min-w-0">{item.label}:</span>
                   </div>
                   <span
+                    // MODIFICATION: Adjusted value text color for total row
                     className={`font-semibold ${
-                      item.isTotal ? "text-sky-300 text-lg" : "text-slate-100"
+                      item.isTotal ? "text-white text-lg" : "text-slate-100"
                     }`}
                   >
                     {item.value}
