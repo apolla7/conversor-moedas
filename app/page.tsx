@@ -59,7 +59,36 @@ const BANKS: Record<string, { name: string; spread: number }> = {
   Unicred: { name: "Unicred", spread: 0 },
 };
 
-const IOF_RATE = 0.0338; // 3.38%
+const IOF_RATE_SCHEDULE = [
+  { period: "Até 2022", rate: "6,38%" },
+  { period: "2023", rate: "5,38%" },
+  { period: "2024", rate: "4,38%" },
+  { period: "2025", rate: "3,38%" },
+  { period: "2026", rate: "2,38%" },
+  { period: "2027", rate: "1,38%" },
+  { period: "2028 em diante", rate: "0%" },
+];
+
+// --- Function to get IOF rate by year ---
+const getCurrentIofRate = (): number => {
+  const currentYear = new Date().getFullYear();
+  if (currentYear === 2023) {
+    return 0.0538;
+  } else if (currentYear === 2024) {
+    return 0.0438;
+  } else if (currentYear === 2025) {
+    return 0.0338;
+  } else if (currentYear === 2026) {
+    return 0.0238;
+  } else if (currentYear === 2027) {
+    return 0.0138;
+  } else if (currentYear >= 2028) {
+    return 0.0;
+  } else {
+    // currentYear <= 2022
+    return 0.0638;
+  }
+};
 
 // --- INTERFACES ---
 interface CotacaoAPI {
@@ -83,6 +112,7 @@ interface CalculationResult {
   foreignCurrencyAmount: number;
   foreignCurrencyCode: string;
   iofRemoved: boolean;
+  currentIofRateApplied: number;
 }
 
 interface ResultDisplayItem {
@@ -201,6 +231,37 @@ const createGroupedBankOptions = (
 
 const GROUPED_BANKS = createGroupedBankOptions(BANKS);
 
+// --- Simple Tooltip Component ---
+interface TooltipProps {
+  content: React.ReactNode;
+  children: React.ReactNode;
+}
+
+const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
+  const [isVisible, setIsVisible] = useState(false);
+
+  return (
+    <div
+      className="relative inline-block"
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
+      {children}
+      {isVisible && (
+        <div
+          role="tooltip"
+          className="absolute z-10 w-max p-2 -mt-1 text-xs leading-tight text-white whitespace-no-wrap bg-slate-700 border border-slate-600 shadow-lg rounded-md
+                     bottom-full left-1/2 transform -translate-x-1/2 mb-2
+                     transition-opacity duration-150"
+        >
+          {content}
+          <div className="absolute left-1/2 transform -translate-x-1/2 bottom-[-4px] w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-slate-700"></div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- COMPONENT ---
 const CurrencyConverterPage = () => {
   const [selectedCurrency, setSelectedCurrency] = useState<string>(
@@ -275,7 +336,9 @@ const CurrencyConverterPage = () => {
       const rateWithSpread = ptaxRate + bankSpreadValue;
 
       const amountInBRLNoIOF = amount * rateWithSpread;
-      const iofValue = removeIOF ? 0 : amountInBRLNoIOF * IOF_RATE;
+
+      const currentIofRateToApply = getCurrentIofRate();
+      const iofValue = removeIOF ? 0 : amountInBRLNoIOF * currentIofRateToApply;
       const totalAmountInBRL = amountInBRLNoIOF + iofValue;
 
       setResult({
@@ -290,6 +353,7 @@ const CurrencyConverterPage = () => {
         foreignCurrencyAmount: amount,
         foreignCurrencyCode: selectedCurrency,
         iofRemoved: removeIOF,
+        currentIofRateApplied: currentIofRateToApply,
       });
     } catch (err) {
       console.error(err);
@@ -304,9 +368,13 @@ const CurrencyConverterPage = () => {
   }, [purchaseAmount, selectedCurrency, selectedBankKey, removeIOF]);
 
   useEffect(() => {
-    if (!result) return;
+    if (!result || typeof result.currentIofRateApplied === "undefined") return;
 
-    const newIofValue = removeIOF ? 0 : result.amountInBRLNoIOF * IOF_RATE;
+    const iofRateForRecalc = result.currentIofRateApplied;
+
+    const newIofValue = removeIOF
+      ? 0
+      : result.amountInBRLNoIOF * iofRateForRecalc;
     const newTotalAmountInBRL = result.amountInBRLNoIOF + newIofValue;
 
     if (
@@ -322,6 +390,19 @@ const CurrencyConverterPage = () => {
       }));
     }
   }, [removeIOF, result]);
+
+  // Function to render the IOF schedule for the tooltip
+  const renderIofScheduleTooltipContent = () => (
+    <div className="space-y-1 text-left">
+      <h4 className="font-semibold text-slate-300 mb-1">Alíquotas IOF:</h4>
+      {IOF_RATE_SCHEDULE.map((item) => (
+        <div key={item.period} className="flex justify-between text-slate-400">
+          <span className="mr-2">{item.period}:</span>
+          <span>{item.rate}</span>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-100 flex flex-col items-center justify-center p-4 selection:bg-sky-500 selection:text-white">
@@ -375,7 +456,6 @@ const CurrencyConverterPage = () => {
                 id="amount"
                 value={purchaseAmount}
                 onChange={(e) => setPurchaseAmount(e.target.value)}
-                // MODIFIED: Placeholder
                 placeholder="Ex: 100,00"
                 className="w-full pl-10 pr-3 py-2.5 bg-slate-700 border border-slate-600 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
               />
@@ -404,7 +484,6 @@ const CurrencyConverterPage = () => {
                   <optgroup key={group.label} label={group.label}>
                     {group.banks.map((bank) => (
                       <option key={bank.key} value={bank.key}>
-                        {/* MODIFIED: Use formatCurrencyBR for spread display */}
                         {bank.name} ({formatCurrencyBR(bank.spread, 2)}% spread)
                       </option>
                     ))}
@@ -465,6 +544,8 @@ const CurrencyConverterPage = () => {
             </h2>
 
             {(() => {
+              const currentCalculationYear = new Date().getFullYear();
+
               const items: ResultDisplayItem[] = [
                 {
                   icon: <Clock className="h-5 w-5" />,
@@ -492,19 +573,16 @@ const CurrencyConverterPage = () => {
                   icon: <DollarSign className="h-5 w-5" />,
                   label: `Valor da Compra (${
                     result.foreignCurrencyCode
-                  } ${formatCurrencyBR(
-                    result.foreignCurrencyAmount,
-                    2
-                  )}) em BRL (sem IOF)`,
+                  } ${formatCurrencyBR(result.foreignCurrencyAmount, 2)})`,
                   value: `R$ ${formatCurrencyBR(result.amountInBRLNoIOF, 2)}`,
                 },
               ];
 
-              if (!result.iofRemoved) {
+              if (!result.iofRemoved && result.currentIofRateApplied > 0) {
                 items.push({
                   icon: <Percent className="h-5 w-5" />,
-                  label: `Valor do IOF (${formatCurrencyBR(
-                    IOF_RATE * 100,
+                  label: `Valor do IOF em ${currentCalculationYear} (${formatCurrencyBR(
+                    result.currentIofRateApplied * 100,
                     2
                   )}%)`,
                   value: `+ R$ ${formatCurrencyBR(result.iofValue, 2)}`,
@@ -513,10 +591,13 @@ const CurrencyConverterPage = () => {
 
               items.push({
                 icon: <DollarSign className="h-5 w-5" />,
-                label: `Valor Total da Compra em BRL ${
-                  result.iofRemoved ? "(IOF Removido)" : ""
+                label: `Valor Final da Compra em BRL${
+                  result.iofRemoved ? " (IOF Removido)" : ""
+                }${
+                  result.currentIofRateApplied === 0 && !result.iofRemoved
+                    ? ` (IOF 0% em ${currentCalculationYear})`
+                    : ""
                 }`,
-                // MODIFIED: Use formatCurrencyBR
                 value: `R$ ${formatCurrencyBR(result.totalAmountInBRL, 2)}`,
                 isTotal: true,
               });
@@ -528,10 +609,10 @@ const CurrencyConverterPage = () => {
                   key={index}
                   className={`flex justify-between items-center p-2.5 rounded-md ${
                     item.isTotal
-                      ? "bg-sky-600" // Color C for the total row
+                      ? "bg-sky-600"
                       : index < NUM_COLOR_A_ITEMS
-                      ? "bg-slate-600" // Color A for the first NUM_COLOR_A_ITEMS items
-                      : "bg-slate-700" // Color B for intermediate items
+                      ? "bg-slate-600"
+                      : "bg-slate-700"
                   }`}
                 >
                   <div
@@ -562,12 +643,18 @@ const CurrencyConverterPage = () => {
         )}
       </div>
       <footer className="text-center text-sm text-slate-500 mt-8 pb-4">
-        Cotações PTAX fornecidas pelo Banco Central do Brasil. Spread e IOF
+        Cotações PTAX fornecidas pelo Banco Central do Brasil. Spread e{" "}
+        <Tooltip content={renderIofScheduleTooltipContent()}>
+          <span className="underline decoration-dotted cursor-help text-sky-400 hover:text-sky-300">
+            IOF
+          </span>
+        </Tooltip>{" "}
         aplicados.<br></br>Lista de Spread atualizada em 22/03/2025. (
         <a
           href="https://www.melhorescartoes.com.br/dolar-no-cartao-de-credito-spread.html"
           target="_blank"
           rel="noopener noreferrer"
+          className="text-sky-400 hover:text-sky-300 hover:underline"
         >
           Fonte
         </a>
