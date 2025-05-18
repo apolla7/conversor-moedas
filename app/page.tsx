@@ -141,11 +141,23 @@ const formatDateForAPI = (date: Date): string => {
   return `${month}-${day}-${year}`;
 };
 
+// Updated formatCurrencyBR function
 const formatCurrencyBR = (value: number, precision: number = 2): string => {
   if (isNaN(value)) {
     return "0," + "0".repeat(precision);
   }
-  return value.toFixed(precision).replace(".", ",");
+
+  let numStr = value.toFixed(precision);
+
+  if (precision !== 4 && Math.abs(value) >= 1000) {
+    const parts = numStr.split(".");
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    numStr = parts.join(",");
+  } else {
+    numStr = numStr.replace(".", ",");
+  }
+
+  return numStr;
 };
 
 const formatPtaxDateTime = (dateTimeString: string): string => {
