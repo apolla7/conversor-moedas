@@ -59,36 +59,8 @@ const BANKS: Record<string, { name: string; spread: number }> = {
   Unicred: { name: "Unicred", spread: 0 },
 };
 
-const IOF_RATE_SCHEDULE = [
-  { period: "Até 2022", rate: "6,38%" },
-  { period: "2023", rate: "5,38%" },
-  { period: "2024", rate: "4,38%" },
-  { period: "2025", rate: "3,38%" },
-  { period: "2026", rate: "2,38%" },
-  { period: "2027", rate: "1,38%" },
-  { period: "2028 em diante", rate: "0%" },
-];
-
-// --- Function to get IOF rate by year ---
-const getCurrentIofRate = (): number => {
-  const currentYear = new Date().getFullYear();
-  if (currentYear === 2023) {
-    return 0.0538;
-  } else if (currentYear === 2024) {
-    return 0.0438;
-  } else if (currentYear === 2025) {
-    return 0.0338;
-  } else if (currentYear === 2026) {
-    return 0.0238;
-  } else if (currentYear === 2027) {
-    return 0.0138;
-  } else if (currentYear >= 2028) {
-    return 0.0;
-  } else {
-    // currentYear <= 2022
-    return 0.0638;
-  }
-};
+// --- FIXED IOF RATE ---
+const FIXED_IOF_RATE = 0.035; // 3.5%
 
 // --- INTERFACES ---
 interface CotacaoAPI {
@@ -141,7 +113,6 @@ const formatDateForAPI = (date: Date): string => {
   return `${month}-${day}-${year}`;
 };
 
-// Updated formatCurrencyBR function
 const formatCurrencyBR = (value: number, precision: number = 2): string => {
   if (isNaN(value)) {
     return "0," + "0".repeat(precision);
@@ -349,7 +320,8 @@ const CurrencyConverterPage = () => {
 
       const amountInBRLNoIOF = amount * rateWithSpread;
 
-      const currentIofRateToApply = getCurrentIofRate();
+      // Use the fixed IOF rate
+      const currentIofRateToApply = FIXED_IOF_RATE;
       const iofValue = removeIOF ? 0 : amountInBRLNoIOF * currentIofRateToApply;
       const totalAmountInBRL = amountInBRLNoIOF + iofValue;
 
@@ -380,9 +352,11 @@ const CurrencyConverterPage = () => {
   }, [purchaseAmount, selectedCurrency, selectedBankKey, removeIOF]);
 
   useEffect(() => {
+    // This effect recalculates IOF if the 'removeIOF' checkbox changes
+    // It will now correctly use the FIXED_IOF_RATE stored in result.currentIofRateApplied
     if (!result || typeof result.currentIofRateApplied === "undefined") return;
 
-    const iofRateForRecalc = result.currentIofRateApplied;
+    const iofRateForRecalc = result.currentIofRateApplied; // This will be FIXED_IOF_RATE
 
     const newIofValue = removeIOF
       ? 0
@@ -403,16 +377,18 @@ const CurrencyConverterPage = () => {
     }
   }, [removeIOF, result]);
 
-  // Function to render the IOF schedule for the tooltip
-  const renderIofScheduleTooltipContent = () => (
+  // Function to render the IOF tooltip content for the fixed rate
+  const renderIofTooltipContent = () => (
     <div className="space-y-1 text-left">
-      <h4 className="font-semibold text-slate-300 mb-1">Alíquotas IOF:</h4>
-      {IOF_RATE_SCHEDULE.map((item) => (
-        <div key={item.period} className="flex justify-between text-slate-400">
-          <span className="mr-2">{item.period}:</span>
-          <span>{item.rate}</span>
-        </div>
-      ))}
+      <h4 className="font-semibold text-slate-300 mb-1">
+        Alíquota IOF a partir de 23/05/25:
+      </h4>
+      <div className="flex justify-between text-slate-400">
+        <span>
+          Taxa de {formatCurrencyBR(FIXED_IOF_RATE * 100, 1)}% para todas
+          transações
+        </span>
+      </div>
     </div>
   );
 
@@ -556,8 +532,6 @@ const CurrencyConverterPage = () => {
             </h2>
 
             {(() => {
-              const currentCalculationYear = new Date().getFullYear();
-
               const items: ResultDisplayItem[] = [
                 {
                   icon: <Clock className="h-5 w-5" />,
@@ -593,10 +567,21 @@ const CurrencyConverterPage = () => {
               if (!result.iofRemoved && result.currentIofRateApplied > 0) {
                 items.push({
                   icon: <Percent className="h-5 w-5" />,
-                  label: `Valor do IOF em ${currentCalculationYear} (${formatCurrencyBR(
+                  label: `Valor do IOF (${formatCurrencyBR(
+                    // Removed year reference
                     result.currentIofRateApplied * 100,
-                    2
+                    1 // Using 1 decimal place for 3.5%
                   )}%)`,
+                  value: `+ R$ ${formatCurrencyBR(result.iofValue, 2)}`,
+                });
+              } else if (
+                !result.iofRemoved &&
+                result.currentIofRateApplied === 0
+              ) {
+                // This case is unlikely now with a fixed positive IOF, but kept for logical completeness
+                items.push({
+                  icon: <Percent className="h-5 w-5" />,
+                  label: `Valor do IOF (0%)`,
                   value: `+ R$ ${formatCurrencyBR(result.iofValue, 2)}`,
                 });
               }
@@ -607,7 +592,7 @@ const CurrencyConverterPage = () => {
                   result.iofRemoved ? " (IOF Removido)" : ""
                 }${
                   result.currentIofRateApplied === 0 && !result.iofRemoved
-                    ? ` (IOF 0% em ${currentCalculationYear})`
+                    ? ` (IOF 0%)` // Simplified this message
                     : ""
                 }`,
                 value: `R$ ${formatCurrencyBR(result.totalAmountInBRL, 2)}`,
@@ -656,12 +641,15 @@ const CurrencyConverterPage = () => {
       </div>
       <footer className="text-center text-sm text-slate-500 mt-8 pb-4">
         Cotações PTAX fornecidas pelo Banco Central do Brasil. Spread e{" "}
-        <Tooltip content={renderIofScheduleTooltipContent()}>
+        <Tooltip content={renderIofTooltipContent()}>
           <span className="underline decoration-dotted cursor-help text-sky-400 hover:text-sky-300">
             IOF
           </span>
         </Tooltip>{" "}
-        aplicados.<br></br>Lista de Spread atualizada em 22/03/2025. (
+        aplicados.<br></br>
+        Valores aproximados para moedas que não sejam USD.
+        <br></br>
+        Lista de Spread atualizada em 22/03/2025. (
         <a
           href="https://www.melhorescartoes.com.br/dolar-no-cartao-de-credito-spread.html"
           target="_blank"
