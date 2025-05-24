@@ -1,4 +1,6 @@
+// app/layout.tsx
 import type { Metadata } from "next";
+import { SpeedInsights } from "@vercel/speed-insights/next"; // 1. Import SpeedInsights
 import "./globals.css"; // Make sure this file exists for Tailwind CSS
 
 export const metadata: Metadata = {
@@ -17,9 +19,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      {/* {" "} */}
       {/* Set appropriate language */}
-      <body>{children}</body>
+      <body>
+        {children}
+        <SpeedInsights /> {/* 2. Add the SpeedInsights component here */}
+      </body>
     </html>
   );
 }

@@ -9,6 +9,9 @@ overrides:
   '@types/react-dom': 19.0.4
 
 dependencies:
+  '@vercel/speed-insights':
+    specifier: ^1.2.0
+    version: 1.2.0(next@15.2.0)(react@19.0.0)
   lucide-react:
     specifier: ^0.506.0
     version: 0.506.0(react@19.0.0)
@@ -676,6 +679,34 @@ packages:
       '@typescript-eslint/types': 8.16.0
       eslint-visitor-keys: 4.2.0
     dev: true
+
+  /@vercel/speed-insights@1.2.0(next@15.2.0)(react@19.0.0):
+    resolution: {integrity: sha512-y9GVzrUJ2xmgtQlzFP2KhVRoCglwfRQgjyfY607aU0hh0Un6d0OUyrJkjuAlsV18qR4zfoFPs/BiIj9YDS6Wzw==}
+    requiresBuild: true
+    peerDependencies:
+      '@sveltejs/kit': ^1 || ^2
+      next: '>= 13'
+      react: ^18 || ^19 || ^19.0.0-rc
+      svelte: '>= 4'
+      vue: ^3
+      vue-router: ^4
+    peerDependenciesMeta:
+      '@sveltejs/kit':
+        optional: true
+      next:
+        optional: true
+      react:
+        optional: true
+      svelte:
+        optional: true
+      vue:
+        optional: true
+      vue-router:
+        optional: true
+    dependencies:
+      next: 15.2.0(react-dom@19.0.0)(react@19.0.0)
+      react: 19.0.0
+    dev: false
 
   /acorn-jsx@5.3.2(acorn@8.14.0):
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}

@@ -12,7 +12,7 @@ import {
   Clock,
 } from "lucide-react";
 
-// --- CONSTANTS ---
+// --- CONSTANTS --- (Keep as is)
 const CURRENCIES = [
   { code: "USD", name: "Dólar Americano" },
   { code: "EUR", name: "Euro" },
@@ -58,20 +58,16 @@ const BANKS: Record<string, { name: string; spread: number }> = {
   Sisprime: { name: "Sisprime", spread: 0 },
   Unicred: { name: "Unicred", spread: 0 },
 };
-
-// --- FIXED IOF RATE ---
 const FIXED_IOF_RATE = 0.035; // 3.5%
 
-// --- INTERFACES ---
+// --- INTERFACES --- (Keep as is)
 interface CotacaoAPI {
   cotacaoVenda: number;
   dataHoraCotacao: string;
 }
-
 interface ApiResponse {
   value: CotacaoAPI[];
 }
-
 interface CalculationResult {
   ptaxRate: number;
   ptaxDateTime: string;
@@ -85,41 +81,36 @@ interface CalculationResult {
   foreignCurrencyCode: string;
   iofRemoved: boolean;
   currentIofRateApplied: number;
+  calculatedWithCustomIof: boolean;
 }
-
 interface ResultDisplayItem {
   icon: React.ReactNode;
   label: string;
   value: string;
   isTotal?: boolean;
 }
-
 interface BankOption {
   key: string;
   name: string;
   spread: number;
 }
-
 interface BankGroup {
   label: string;
   banks: BankOption[];
 }
 
-// --- HELPER FUNCTIONS ---
+// --- HELPER FUNCTIONS --- (Keep as is)
 const formatDateForAPI = (date: Date): string => {
   const month = (date.getMonth() + 1).toString().padStart(2, "0");
   const day = date.getDate().toString().padStart(2, "0");
   const year = date.getFullYear();
   return `${month}-${day}-${year}`;
 };
-
 const formatCurrencyBR = (value: number, precision: number = 2): string => {
   if (isNaN(value)) {
     return "0," + "0".repeat(precision);
   }
-
   let numStr = value.toFixed(precision);
-
   if (precision !== 4 && Math.abs(value) >= 1000) {
     const parts = numStr.split(".");
     parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -127,16 +118,23 @@ const formatCurrencyBR = (value: number, precision: number = 2): string => {
   } else {
     numStr = numStr.replace(".", ",");
   }
-
   return numStr;
 };
-
 const formatPtaxDateTime = (dateTimeString: string): string => {
+  if (!dateTimeString) {
+    // Added guard for undefined/null dateTimeString
+    console.warn(
+      "formatPtaxDateTime called with invalid dateTimeString:",
+      dateTimeString
+    );
+    return "Data inválida";
+  }
   try {
     const date = new Date(dateTimeString);
     if (isNaN(date.getTime())) {
       const parts = dateTimeString.split(" ");
-      if (parts.length > 1) {
+      if (parts.length > 1 && parts[0] && parts[1]) {
+        // Add checks for parts[0] and parts[1]
         const datePart = parts[0].split("-").reverse().join("/");
         const timePart = parts[1].substring(0, 5); // HH:MM
         return `${datePart} às ${timePart}`;
@@ -151,16 +149,20 @@ const formatPtaxDateTime = (dateTimeString: string): string => {
     return `${day}/${month}/${year} às ${hours}:${minutes}`;
   } catch (e) {
     console.warn("Could not parse PTAX date time:", dateTimeString, e);
+    // Fallback parsing logic, ensure dateTimeString and parts are valid
+    if (typeof dateTimeString.split !== "function") {
+      // Defensive check
+      return "Data inválida após erro";
+    }
     const parts = dateTimeString.split(" ");
-    if (parts.length > 1) {
-      const datePart = parts[0].split("-").reverse().join("/"); // DD/MM/YYYY
-      const timePart = parts[1].substring(0, 5); // HH:MM
+    if (parts.length > 1 && parts[0] && parts[1]) {
+      const datePart = parts[0].split("-").reverse().join("/");
+      const timePart = parts[1].substring(0, 5);
       return `${datePart} às ${timePart}`;
     }
     return dateTimeString;
   }
 };
-
 const createGroupedBankOptions = (
   banksData: Record<string, { name: string; spread: number }>
 ): BankGroup[] => {
@@ -171,13 +173,11 @@ const createGroupedBankOptions = (
       spread: bankDetails.spread,
     })
   );
-
   allBanks.sort((a, b) => {
     if (a.spread < b.spread) return -1;
     if (a.spread > b.spread) return 1;
     return a.name.localeCompare(b.name);
   });
-
   const groupDefinitions: BankGroup[] = [
     { label: "Spread 0%", banks: [] },
     { label: "Spread até 1%", banks: [] },
@@ -188,41 +188,33 @@ const createGroupedBankOptions = (
     { label: "Spread até 6%", banks: [] },
     { label: "Spread acima de 6%", banks: [] },
   ];
-
   allBanks.forEach((bank) => {
-    if (bank.spread === 0) {
-      groupDefinitions[0].banks.push(bank);
-    } else if (bank.spread > 0 && bank.spread <= 1) {
+    if (bank.spread === 0) groupDefinitions[0].banks.push(bank);
+    else if (bank.spread > 0 && bank.spread <= 1)
       groupDefinitions[1].banks.push(bank);
-    } else if (bank.spread > 1 && bank.spread <= 2) {
+    else if (bank.spread > 1 && bank.spread <= 2)
       groupDefinitions[2].banks.push(bank);
-    } else if (bank.spread > 2 && bank.spread <= 3) {
+    else if (bank.spread > 2 && bank.spread <= 3)
       groupDefinitions[3].banks.push(bank);
-    } else if (bank.spread > 3 && bank.spread <= 4) {
+    else if (bank.spread > 3 && bank.spread <= 4)
       groupDefinitions[4].banks.push(bank);
-    } else if (bank.spread > 4 && bank.spread <= 5) {
+    else if (bank.spread > 4 && bank.spread <= 5)
       groupDefinitions[5].banks.push(bank);
-    } else if (bank.spread > 5 && bank.spread <= 6) {
+    else if (bank.spread > 5 && bank.spread <= 6)
       groupDefinitions[6].banks.push(bank);
-    } else if (bank.spread > 6) {
-      groupDefinitions[7].banks.push(bank);
-    }
+    else if (bank.spread > 6) groupDefinitions[7].banks.push(bank);
   });
-
   return groupDefinitions.filter((group) => group.banks.length > 0);
 };
-
 const GROUPED_BANKS = createGroupedBankOptions(BANKS);
 
-// --- Simple Tooltip Component ---
+// --- Simple Tooltip Component --- (Keep as is)
 interface TooltipProps {
   content: React.ReactNode;
   children: React.ReactNode;
 }
-
 const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
   const [isVisible, setIsVisible] = useState(false);
-
   return (
     <div
       className="relative inline-block"
@@ -233,9 +225,7 @@ const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
       {isVisible && (
         <div
           role="tooltip"
-          className="absolute z-10 w-max p-2 -mt-1 text-xs leading-tight text-white whitespace-no-wrap bg-slate-700 border border-slate-600 shadow-lg rounded-md
-                     bottom-full left-1/2 transform -translate-x-1/2 mb-2
-                     transition-opacity duration-150"
+          className="absolute z-10 w-max p-2 -mt-1 text-xs leading-tight text-white whitespace-no-wrap bg-slate-700 border border-slate-600 shadow-lg rounded-md bottom-full left-1/2 transform -translate-x-1/2 mb-2 transition-opacity duration-150"
         >
           {content}
           <div className="absolute left-1/2 transform -translate-x-1/2 bottom-[-4px] w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-slate-700"></div>
@@ -253,18 +243,19 @@ const CurrencyConverterPage = () => {
   const [purchaseAmount, setPurchaseAmount] = useState<string>("100");
   const [selectedBankKey, setSelectedBankKey] = useState<string>("Porto Bank");
   const [removeIOF, setRemoveIOF] = useState<boolean>(false);
-
+  const [editIofRate, setEditIofRate] = useState<boolean>(false);
+  const [customIofRate, setCustomIofRate] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CalculationResult | null>(null);
 
+  // Effect to clear results only when core calculation parameters change
   useEffect(() => {
     setResult(null);
   }, [selectedCurrency, purchaseAmount, selectedBankKey]);
 
   const handleCalculate = useCallback(async () => {
     setError(null);
-
     const amount = parseFloat(purchaseAmount.replace(",", "."));
     if (isNaN(amount) || amount <= 0) {
       setError("Por favor, insira um valor de compra válido e positivo.");
@@ -278,16 +269,13 @@ const CurrencyConverterPage = () => {
       setError("Por favor, selecione um banco válido.");
       return;
     }
-
     setIsLoading(true);
-
+    // ... (rest of handleCalculate is mostly the same)
     const today = new Date();
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(today.getDate() - 7);
-
     const endDate = formatDateForAPI(today);
     const startDate = formatDateForAPI(sevenDaysAgo);
-
     const apiUrl = `https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoMoedaPeriodo(moeda=@moeda,dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)?@moeda='${selectedCurrency}'&@dataInicial='${startDate}'&@dataFinalCotacao='${endDate}'&$top=100&$filter=tipoBoletim eq 'Fechamento'&$orderby=dataHoraCotacao desc&$format=json`;
 
     try {
@@ -299,7 +287,6 @@ const CurrencyConverterPage = () => {
         );
       }
       const data: ApiResponse = await response.json();
-
       if (!data.value || data.value.length === 0) {
         setError(
           "Não foi possível obter a cotação PTAX para a moeda selecionada no período. Verifique se a moeda é coberta pelo PTAX ou tente mais tarde."
@@ -308,21 +295,43 @@ const CurrencyConverterPage = () => {
         setIsLoading(false);
         return;
       }
-
       const latestQuote = data.value[0];
       const ptaxRate = latestQuote.cotacaoVenda;
       const ptaxDateTime = latestQuote.dataHoraCotacao;
-
       const bank = BANKS[selectedBankKey];
       const bankSpreadPercentage = bank.spread;
       const bankSpreadValue = ptaxRate * (bankSpreadPercentage / 100);
       const rateWithSpread = ptaxRate + bankSpreadValue;
-
       const amountInBRLNoIOF = amount * rateWithSpread;
 
-      // Use the fixed IOF rate
-      const currentIofRateToApply = FIXED_IOF_RATE;
-      const iofValue = removeIOF ? 0 : amountInBRLNoIOF * currentIofRateToApply;
+      let iofRateToUse = FIXED_IOF_RATE;
+      let wasCustomIofUsed = false;
+      const fixedIofPercentageForDisplay = FIXED_IOF_RATE * 100;
+
+      if (removeIOF) {
+        iofRateToUse = 0;
+      } else if (editIofRate) {
+        const customRateValue = parseFloat(customIofRate.replace(",", "."));
+        if (
+          isNaN(customRateValue) ||
+          customRateValue < 0 ||
+          customRateValue >= fixedIofPercentageForDisplay
+        ) {
+          setError(
+            `Alíquota de IOF personalizada inválida. Deve ser um valor entre 0 e ${formatCurrencyBR(
+              fixedIofPercentageForDisplay,
+              1
+            )}%.`
+          );
+          setIsLoading(false);
+          return;
+        }
+        iofRateToUse = customRateValue / 100;
+        wasCustomIofUsed = true;
+      }
+
+      const currentIofRateToApply = iofRateToUse;
+      const iofValue = amountInBRLNoIOF * currentIofRateToApply;
       const totalAmountInBRL = amountInBRLNoIOF + iofValue;
 
       setResult({
@@ -338,6 +347,7 @@ const CurrencyConverterPage = () => {
         foreignCurrencyCode: selectedCurrency,
         iofRemoved: removeIOF,
         currentIofRateApplied: currentIofRateToApply,
+        calculatedWithCustomIof: wasCustomIofUsed,
       });
     } catch (err) {
       console.error(err);
@@ -349,44 +359,80 @@ const CurrencyConverterPage = () => {
       setResult(null);
     }
     setIsLoading(false);
-  }, [purchaseAmount, selectedCurrency, selectedBankKey, removeIOF]);
+  }, [
+    purchaseAmount,
+    selectedCurrency,
+    selectedBankKey,
+    removeIOF,
+    editIofRate,
+    customIofRate,
+  ]);
 
+  // Effect to update IOF calculation part of an existing result when IOF settings change
   useEffect(() => {
-    // This effect recalculates IOF if the 'removeIOF' checkbox changes
-    // It will now correctly use the FIXED_IOF_RATE stored in result.currentIofRateApplied
-    if (!result || typeof result.currentIofRateApplied === "undefined") return;
+    if (!result) return; // No result to update
 
-    const iofRateForRecalc = result.currentIofRateApplied; // This will be FIXED_IOF_RATE
+    let newCurrentIofRateApplied;
+    let newCalculatedWithCustomIof;
 
-    const newIofValue = removeIOF
-      ? 0
-      : result.amountInBRLNoIOF * iofRateForRecalc;
+    if (removeIOF) {
+      newCurrentIofRateApplied = 0;
+      newCalculatedWithCustomIof = false;
+    } else {
+      if (editIofRate) {
+        const customRateValue = parseFloat(customIofRate.replace(",", "."));
+        const fixedIofPercentage = FIXED_IOF_RATE * 100;
+        // Check if custom rate is valid for this non-error-throwing update
+        if (
+          !isNaN(customRateValue) &&
+          customRateValue >= 0 &&
+          customRateValue < fixedIofPercentage
+        ) {
+          newCurrentIofRateApplied = customRateValue / 100;
+          newCalculatedWithCustomIof = true;
+        } else {
+          // Invalid custom rate while edit mode is on: fallback to fixed for this display update
+          newCurrentIofRateApplied = FIXED_IOF_RATE;
+          newCalculatedWithCustomIof = false;
+        }
+      } else {
+        // Not removing IOF, and not editing IOF, so use fixed rate.
+        newCurrentIofRateApplied = FIXED_IOF_RATE;
+        newCalculatedWithCustomIof = false;
+      }
+    }
+
+    const newIofValue = result.amountInBRLNoIOF * newCurrentIofRateApplied;
     const newTotalAmountInBRL = result.amountInBRLNoIOF + newIofValue;
 
+    // Only update state if relevant values have actually changed
     if (
       newIofValue !== result.iofValue ||
       newTotalAmountInBRL !== result.totalAmountInBRL ||
-      removeIOF !== result.iofRemoved
+      removeIOF !== result.iofRemoved || // This ensures update if removeIOF toggled
+      newCurrentIofRateApplied !== result.currentIofRateApplied ||
+      newCalculatedWithCustomIof !== result.calculatedWithCustomIof
     ) {
-      setResult((prevResult) => ({
-        ...prevResult!,
+      setResult({
+        ...result, // Preserve all other fields from the existing result
         iofValue: newIofValue,
         totalAmountInBRL: newTotalAmountInBRL,
         iofRemoved: removeIOF,
-      }));
+        currentIofRateApplied: newCurrentIofRateApplied,
+        calculatedWithCustomIof: newCalculatedWithCustomIof,
+      });
     }
-  }, [removeIOF, result]);
+  }, [removeIOF, editIofRate, customIofRate, result]); // Depend on all IOF settings and the result itself
 
-  // Function to render the IOF tooltip content for the fixed rate
   const renderIofTooltipContent = () => (
     <div className="space-y-1 text-left">
       <h4 className="font-semibold text-slate-300 mb-1">
-        Alíquota IOF a partir de 23/05/25:
+        Alíquota IOF Padrão:
       </h4>
       <div className="flex justify-between text-slate-400">
         <span>
           Taxa de {formatCurrencyBR(FIXED_IOF_RATE * 100, 1)}% para todas
-          transações
+          transações (se não personalizada ou removida).
         </span>
       </div>
     </div>
@@ -398,7 +444,6 @@ const CurrencyConverterPage = () => {
         <h1 className="text-3xl font-bold text-sky-400 mb-6 text-center">
           Conversor de Moedas
         </h1>
-
         <div className="space-y-6">
           {/* Currency Select */}
           <div>
@@ -426,7 +471,6 @@ const CurrencyConverterPage = () => {
               </select>
             </div>
           </div>
-
           {/* Amount Input */}
           <div>
             <label
@@ -449,8 +493,7 @@ const CurrencyConverterPage = () => {
               />
             </div>
           </div>
-
-          {/* Bank Select with Grouping */}
+          {/* Bank Select */}
           <div>
             <label
               htmlFor="bank"
@@ -480,24 +523,87 @@ const CurrencyConverterPage = () => {
               </select>
             </div>
           </div>
-
           {/* Remove IOF Checkbox */}
-          <div className="pt-1">
-            <label
-              htmlFor="remove-iof"
-              className="flex items-center space-x-2 text-slate-300 cursor-pointer select-none"
-            >
-              <input
-                type="checkbox"
-                id="remove-iof"
-                checked={removeIOF}
-                onChange={(e) => setRemoveIOF(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-sky-500 focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-slate-800 outline-none"
-              />
-              <span>Remover IOF?</span>
-            </label>
-          </div>
-
+          {!editIofRate && (
+            <div className="pt-1">
+              <label
+                htmlFor="remove-iof"
+                className="flex items-center space-x-2 text-slate-300 cursor-pointer select-none"
+              >
+                <input
+                  type="checkbox"
+                  id="remove-iof"
+                  checked={removeIOF}
+                  onChange={(e) => {
+                    const isChecked = e.target.checked;
+                    setRemoveIOF(isChecked);
+                    if (isChecked) {
+                      setEditIofRate(false);
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-sky-500 focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-slate-800 outline-none"
+                />
+                <span>Remover IOF</span>
+              </label>
+            </div>
+          )}
+          {/* Edit IOF Checkbox */}
+          {!removeIOF && (
+            <div className="pt-1">
+              <label
+                htmlFor="edit-iof-rate"
+                className="flex items-center space-x-2 text-slate-300 cursor-pointer select-none"
+              >
+                <input
+                  type="checkbox"
+                  id="edit-iof-rate"
+                  checked={editIofRate}
+                  onChange={(e) => {
+                    const isChecked = e.target.checked;
+                    setEditIofRate(isChecked);
+                    if (isChecked) {
+                      setRemoveIOF(false);
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-sky-500 focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-slate-800 outline-none"
+                />
+                <span>Editar valor IOF</span>
+              </label>
+            </div>
+          )}
+          {/* Custom IOF Input */}
+          {editIofRate && (
+            <div className="pt-3">
+              <label
+                htmlFor="custom-iof-rate-input"
+                className="block text-sm font-medium text-slate-300 mb-1"
+              >
+                Alíquota IOF Personalizada (%)
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Percent className="h-5 w-5 text-slate-400" />
+                </div>
+                <input
+                  type="number"
+                  id="custom-iof-rate-input"
+                  value={customIofRate}
+                  onChange={(e) => setCustomIofRate(e.target.value)}
+                  placeholder={`Ex: 1.0 (menor que ${formatCurrencyBR(
+                    FIXED_IOF_RATE * 100,
+                    1
+                  )}%)`}
+                  className="w-full pl-10 pr-3 py-2.5 bg-slate-700 border border-slate-600 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
+                  step="0.1"
+                  min="0"
+                />
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                A alíquota personalizada deve ser um valor positivo e menor que
+                a taxa padrão de {formatCurrencyBR(FIXED_IOF_RATE * 100, 1)}%.
+              </p>
+            </div>
+          )}
           <button
             onClick={handleCalculate}
             disabled={isLoading}
@@ -530,7 +636,6 @@ const CurrencyConverterPage = () => {
             <h2 className="text-xl font-semibold text-sky-400 mb-4">
               Resultado da Conversão:
             </h2>
-
             {(() => {
               const items: ResultDisplayItem[] = [
                 {
@@ -563,50 +668,36 @@ const CurrencyConverterPage = () => {
                   value: `R$ ${formatCurrencyBR(result.amountInBRLNoIOF, 2)}`,
                 },
               ];
-
               if (!result.iofRemoved && result.currentIofRateApplied > 0) {
+                // Check if rate applied is > 0 to show IOF line
                 items.push({
                   icon: <Percent className="h-5 w-5" />,
                   label: `Valor do IOF (${formatCurrencyBR(
-                    // Removed year reference
                     result.currentIofRateApplied * 100,
-                    1 // Using 1 decimal place for 3.5%
+                    1
                   )}%)`,
                   value: `+ R$ ${formatCurrencyBR(result.iofValue, 2)}`,
                 });
-              } else if (
-                !result.iofRemoved &&
-                result.currentIofRateApplied === 0
-              ) {
-                // This case is unlikely now with a fixed positive IOF, but kept for logical completeness
-                items.push({
-                  icon: <Percent className="h-5 w-5" />,
-                  label: `Valor do IOF (0%)`,
-                  value: `+ R$ ${formatCurrencyBR(result.iofValue, 2)}`,
-                });
               }
-
+              let totalLabelSuffix = "";
+              if (result.iofRemoved) totalLabelSuffix = " (IOF Removido)";
+              else if (result.calculatedWithCustomIof)
+                totalLabelSuffix = " (IOF Personalizado)";
+              else if (result.currentIofRateApplied === 0)
+                totalLabelSuffix = " (IOF 0%)";
               items.push({
                 icon: <DollarSign className="h-5 w-5" />,
-                label: `Valor Final da Compra em BRL${
-                  result.iofRemoved ? " (IOF Removido)" : ""
-                }${
-                  result.currentIofRateApplied === 0 && !result.iofRemoved
-                    ? ` (IOF 0%)` // Simplified this message
-                    : ""
-                }`,
+                label: `Valor Final da Compra em BRL${totalLabelSuffix}`,
                 value: `R$ ${formatCurrencyBR(result.totalAmountInBRL, 2)}`,
                 isTotal: true,
               });
-
               const NUM_COLOR_A_ITEMS = 4;
-
               return items.map((item, index) => (
                 <div
                   key={index}
                   className={`flex justify-between items-center p-2.5 rounded-md ${
                     item.isTotal
-                      ? "bg-sky-600"
+                      ? "bg-teal-700"
                       : index < NUM_COLOR_A_ITEMS
                       ? "bg-slate-600"
                       : "bg-slate-700"
@@ -646,9 +737,10 @@ const CurrencyConverterPage = () => {
             IOF
           </span>
         </Tooltip>{" "}
-        aplicados.<br></br>
+        aplicados.
+        <br />
         Valores aproximados para moedas que não sejam USD.
-        <br></br>
+        <br />
         Lista de Spread atualizada em 22/03/2025. (
         <a
           href="https://www.melhorescartoes.com.br/dolar-no-cartao-de-credito-spread.html"
