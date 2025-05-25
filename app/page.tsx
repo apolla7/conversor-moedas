@@ -12,7 +12,7 @@ import {
   Clock,
 } from "lucide-react";
 
-// --- CONSTANTS --- (Keep as is)
+// --- CONSTANTS ---
 const CURRENCIES = [
   { code: "USD", name: "Dólar Americano" },
   { code: "EUR", name: "Euro" },
@@ -60,7 +60,7 @@ const BANKS: Record<string, { name: string; spread: number }> = {
 };
 const FIXED_IOF_RATE = 0.035; // 3.5%
 
-// --- INTERFACES --- (Keep as is)
+// --- INTERFACES ---
 interface CotacaoAPI {
   cotacaoVenda: number;
   dataHoraCotacao: string;
@@ -99,7 +99,7 @@ interface BankGroup {
   banks: BankOption[];
 }
 
-// --- HELPER FUNCTIONS --- (Keep as is)
+// --- HELPER FUNCTIONS ---
 const formatDateForAPI = (date: Date): string => {
   const month = (date.getMonth() + 1).toString().padStart(2, "0");
   const day = date.getDate().toString().padStart(2, "0");
@@ -122,7 +122,6 @@ const formatCurrencyBR = (value: number, precision: number = 2): string => {
 };
 const formatPtaxDateTime = (dateTimeString: string): string => {
   if (!dateTimeString) {
-    // Added guard for undefined/null dateTimeString
     console.warn(
       "formatPtaxDateTime called with invalid dateTimeString:",
       dateTimeString
@@ -134,7 +133,6 @@ const formatPtaxDateTime = (dateTimeString: string): string => {
     if (isNaN(date.getTime())) {
       const parts = dateTimeString.split(" ");
       if (parts.length > 1 && parts[0] && parts[1]) {
-        // Add checks for parts[0] and parts[1]
         const datePart = parts[0].split("-").reverse().join("/");
         const timePart = parts[1].substring(0, 5); // HH:MM
         return `${datePart} às ${timePart}`;
@@ -149,9 +147,7 @@ const formatPtaxDateTime = (dateTimeString: string): string => {
     return `${day}/${month}/${year} às ${hours}:${minutes}`;
   } catch (e) {
     console.warn("Could not parse PTAX date time:", dateTimeString, e);
-    // Fallback parsing logic, ensure dateTimeString and parts are valid
     if (typeof dateTimeString.split !== "function") {
-      // Defensive check
       return "Data inválida após erro";
     }
     const parts = dateTimeString.split(" ");
@@ -208,7 +204,7 @@ const createGroupedBankOptions = (
 };
 const GROUPED_BANKS = createGroupedBankOptions(BANKS);
 
-// --- Simple Tooltip Component --- (Keep as is)
+// --- Simple Tooltip Component ---
 interface TooltipProps {
   content: React.ReactNode;
   children: React.ReactNode;
@@ -235,13 +231,29 @@ const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
   );
 };
 
+const LOCAL_STORAGE_LAST_BANK_KEY = "conversorMoedasLastSelectedBank"; // Added key
+
 // --- COMPONENT ---
 const CurrencyConverterPage = () => {
   const [selectedCurrency, setSelectedCurrency] = useState<string>(
     CURRENCIES[0].code
   );
   const [purchaseAmount, setPurchaseAmount] = useState<string>("100");
-  const [selectedBankKey, setSelectedBankKey] = useState<string>("Porto Bank");
+
+  // MODIFIED: Initialize selectedBankKey from localStorage or default
+  const [selectedBankKey, setSelectedBankKey] = useState<string>(() => {
+    // This function runs only on initial mount
+    if (typeof window !== "undefined") {
+      // Ensure localStorage is available (client-side)
+      const savedBank = localStorage.getItem(LOCAL_STORAGE_LAST_BANK_KEY);
+      // Check if the saved bank still exists in our BANKS constant
+      if (savedBank && BANKS[savedBank]) {
+        return savedBank;
+      }
+    }
+    return "Porto Bank"; // Default bank if nothing saved or saved bank is invalid
+  });
+
   const [removeIOF, setRemoveIOF] = useState<boolean>(false);
   const [editIofRate, setEditIofRate] = useState<boolean>(false);
   const [customIofRate, setCustomIofRate] = useState<string>("");
@@ -249,10 +261,20 @@ const CurrencyConverterPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CalculationResult | null>(null);
 
+  // ADDED: Effect to save selected bank to localStorage when it changes
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      // Ensure selectedBankKey is valid before saving
+      if (selectedBankKey && BANKS[selectedBankKey]) {
+        localStorage.setItem(LOCAL_STORAGE_LAST_BANK_KEY, selectedBankKey);
+      }
+    }
+  }, [selectedBankKey]); // This effect runs whenever selectedBankKey changes
+
   // Effect to clear results only when core calculation parameters change
   useEffect(() => {
     setResult(null);
-  }, [selectedCurrency, purchaseAmount, selectedBankKey, customIofRate]);
+  }, [selectedCurrency, purchaseAmount, selectedBankKey, customIofRate]); // Note: selectedBankKey is already here
 
   const handleCalculate = useCallback(async () => {
     setError(null);
@@ -270,7 +292,6 @@ const CurrencyConverterPage = () => {
       return;
     }
     setIsLoading(true);
-    // ... (rest of handleCalculate is mostly the same)
     const today = new Date();
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(today.getDate() - 7);
@@ -382,7 +403,6 @@ const CurrencyConverterPage = () => {
       if (editIofRate) {
         const customRateValue = parseFloat(customIofRate.replace(",", "."));
         const fixedIofPercentage = FIXED_IOF_RATE * 100;
-        // Check if custom rate is valid for this non-error-throwing update
         if (
           !isNaN(customRateValue) &&
           customRateValue >= 0 &&
@@ -391,12 +411,10 @@ const CurrencyConverterPage = () => {
           newCurrentIofRateApplied = customRateValue / 100;
           newCalculatedWithCustomIof = true;
         } else {
-          // Invalid custom rate while edit mode is on: fallback to fixed for this display update
           newCurrentIofRateApplied = FIXED_IOF_RATE;
           newCalculatedWithCustomIof = false;
         }
       } else {
-        // Not removing IOF, and not editing IOF, so use fixed rate.
         newCurrentIofRateApplied = FIXED_IOF_RATE;
         newCalculatedWithCustomIof = false;
       }
@@ -405,16 +423,15 @@ const CurrencyConverterPage = () => {
     const newIofValue = result.amountInBRLNoIOF * newCurrentIofRateApplied;
     const newTotalAmountInBRL = result.amountInBRLNoIOF + newIofValue;
 
-    // Only update state if relevant values have actually changed
     if (
       newIofValue !== result.iofValue ||
       newTotalAmountInBRL !== result.totalAmountInBRL ||
-      removeIOF !== result.iofRemoved || // This ensures update if removeIOF toggled
+      removeIOF !== result.iofRemoved ||
       newCurrentIofRateApplied !== result.currentIofRateApplied ||
       newCalculatedWithCustomIof !== result.calculatedWithCustomIof
     ) {
       setResult({
-        ...result, // Preserve all other fields from the existing result
+        ...result,
         iofValue: newIofValue,
         totalAmountInBRL: newTotalAmountInBRL,
         iofRemoved: removeIOF,
@@ -422,17 +439,18 @@ const CurrencyConverterPage = () => {
         calculatedWithCustomIof: newCalculatedWithCustomIof,
       });
     }
-  }, [removeIOF, editIofRate, result]); // Depend on all IOF settings and the result itself
+    // }, [removeIOF, editIofRate, customIofRate, result]); // MODIFIED: Added customIofRate here as it's used inside
+  }, [removeIOF, editIofRate, customIofRate, result, FIXED_IOF_RATE]); // Added customIofRate and FIXED_IOF_RATE to dependency array
 
   const renderIofTooltipContent = () => (
     <div className="space-y-1 text-left">
       <h4 className="font-semibold text-slate-300 mb-1">
-        Alíquota IOF Padrão:
+        Alíquota IOF padrão (a partir de 23/05/25):
       </h4>
       <div className="flex justify-between text-slate-400">
         <span>
-          Taxa de {formatCurrencyBR(FIXED_IOF_RATE * 100, 1)}% para todas
-          transações (se não personalizada ou removida).
+          Taxa de {formatCurrencyBR(FIXED_IOF_RATE * 100, 1)}% para todas as
+          transações.
         </span>
       </div>
     </div>
@@ -567,7 +585,7 @@ const CurrencyConverterPage = () => {
                   }}
                   className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-sky-500 focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-slate-800 outline-none"
                 />
-                <span>Editar valor IOF</span>
+                <span>Editar IOF</span>
               </label>
             </div>
           )}
@@ -651,7 +669,7 @@ const CurrencyConverterPage = () => {
                 {
                   icon: <Percent className="h-5 w-5" />,
                   label: `Spread do Banco (${
-                    BANKS[selectedBankKey].name
+                    BANKS[selectedBankKey]?.name || "Desconhecido" // Added fallback for safety
                   } - ${formatCurrencyBR(result.bankSpreadPercentage, 2)}%)`,
                   value: `+ R$ ${formatCurrencyBR(result.bankSpreadValue, 4)}`,
                 },
@@ -669,7 +687,6 @@ const CurrencyConverterPage = () => {
                 },
               ];
               if (!result.iofRemoved && result.currentIofRateApplied > 0) {
-                // Check if rate applied is > 0 to show IOF line
                 items.push({
                   icon: <Percent className="h-5 w-5" />,
                   label: `Valor do IOF (${formatCurrencyBR(
@@ -741,9 +758,9 @@ const CurrencyConverterPage = () => {
         <br />
         Valores aproximados para moedas que não sejam USD.
         <br />
-        Lista de Spread atualizada em 22/03/2025. (
+        Lista de Spread atualizada em 23/05/2025. (
         <a
-          href="https://www.melhorescartoes.com.br/dolar-no-cartao-de-credito-spread.html"
+          href="https://www.melhoresdestinos.com.br/novo-iof-cartao-de-credito-conta-global-ranking-spread.html"
           target="_blank"
           rel="noopener noreferrer"
           className="text-sky-400 hover:text-sky-300 hover:underline"
