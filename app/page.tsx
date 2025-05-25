@@ -58,7 +58,7 @@ const BANKS: Record<string, { name: string; spread: number }> = {
   Sisprime: { name: "Sisprime", spread: 0 },
   Unicred: { name: "Unicred", spread: 0 },
 };
-const FIXED_IOF_RATE = 0.035; // 3.5%
+const FIXED_IOF_RATE = 0.035;
 
 // --- INTERFACES ---
 interface CotacaoAPI {
@@ -134,7 +134,7 @@ const formatPtaxDateTime = (dateTimeString: string): string => {
       const parts = dateTimeString.split(" ");
       if (parts.length > 1 && parts[0] && parts[1]) {
         const datePart = parts[0].split("-").reverse().join("/");
-        const timePart = parts[1].substring(0, 5); // HH:MM
+        const timePart = parts[1].substring(0, 5);
         return `${datePart} às ${timePart}`;
       }
       return dateTimeString;
@@ -231,7 +231,8 @@ const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
   );
 };
 
-const LOCAL_STORAGE_LAST_BANK_KEY = "conversorMoedasLastSelectedBank"; // Added key
+const LOCAL_STORAGE_LAST_BANK_KEY = "conversorMoedasLastSelectedBank";
+const DEFAULT_BANK_KEY = "Porto Bank";
 
 // --- COMPONENT ---
 const CurrencyConverterPage = () => {
@@ -240,19 +241,8 @@ const CurrencyConverterPage = () => {
   );
   const [purchaseAmount, setPurchaseAmount] = useState<string>("100");
 
-  // MODIFIED: Initialize selectedBankKey from localStorage or default
-  const [selectedBankKey, setSelectedBankKey] = useState<string>(() => {
-    // This function runs only on initial mount
-    if (typeof window !== "undefined") {
-      // Ensure localStorage is available (client-side)
-      const savedBank = localStorage.getItem(LOCAL_STORAGE_LAST_BANK_KEY);
-      // Check if the saved bank still exists in our BANKS constant
-      if (savedBank && BANKS[savedBank]) {
-        return savedBank;
-      }
-    }
-    return "Porto Bank"; // Default bank if nothing saved or saved bank is invalid
-  });
+  const [selectedBankKey, setSelectedBankKey] = useState<string>(""); // Initialize empty
+  const [isBankHydrated, setIsBankHydrated] = useState(false); // Track client-side loading
 
   const [removeIOF, setRemoveIOF] = useState<boolean>(false);
   const [editIofRate, setEditIofRate] = useState<boolean>(false);
@@ -261,23 +251,38 @@ const CurrencyConverterPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CalculationResult | null>(null);
 
-  // ADDED: Effect to save selected bank to localStorage when it changes
+  // Effect to load the saved bank from localStorage ONCE after mount
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      // Ensure selectedBankKey is valid before saving
-      if (selectedBankKey && BANKS[selectedBankKey]) {
-        localStorage.setItem(LOCAL_STORAGE_LAST_BANK_KEY, selectedBankKey);
-      }
+    const savedBank = localStorage.getItem(LOCAL_STORAGE_LAST_BANK_KEY);
+    if (savedBank && BANKS[savedBank]) {
+      setSelectedBankKey(savedBank);
+    } else {
+      setSelectedBankKey(DEFAULT_BANK_KEY); // Fallback to default
     }
-  }, [selectedBankKey]); // This effect runs whenever selectedBankKey changes
+    setIsBankHydrated(true); // Mark as hydrated
+  }, []); // Empty dependency array: runs once on mount
+
+  // Effect to save selected bank to localStorage when it changes
+  useEffect(() => {
+    // Only save if hydrated and selectedBankKey is a valid bank
+    if (isBankHydrated && selectedBankKey && BANKS[selectedBankKey]) {
+      localStorage.setItem(LOCAL_STORAGE_LAST_BANK_KEY, selectedBankKey);
+    }
+  }, [selectedBankKey, isBankHydrated]); // Runs when selectedBankKey or isBankHydrated changes
 
   // Effect to clear results only when core calculation parameters change
   useEffect(() => {
     setResult(null);
-  }, [selectedCurrency, purchaseAmount, selectedBankKey, customIofRate]); // Note: selectedBankKey is already here
+  }, [selectedCurrency, purchaseAmount, selectedBankKey, customIofRate]);
 
   const handleCalculate = useCallback(async () => {
     setError(null);
+
+    if (!isBankHydrated || !selectedBankKey || !BANKS[selectedBankKey]) {
+      setError("Por favor, selecione um banco válido.");
+      return;
+    }
+
     const amount = parseFloat(purchaseAmount.replace(",", "."));
     if (isNaN(amount) || amount <= 0) {
       setError("Por favor, insira um valor de compra válido e positivo.");
@@ -287,10 +292,7 @@ const CurrencyConverterPage = () => {
       setError("Por favor, selecione uma moeda.");
       return;
     }
-    if (!selectedBankKey || !BANKS[selectedBankKey]) {
-      setError("Por favor, selecione um banco válido.");
-      return;
-    }
+
     setIsLoading(true);
     const today = new Date();
     const sevenDaysAgo = new Date();
@@ -319,6 +321,8 @@ const CurrencyConverterPage = () => {
       const latestQuote = data.value[0];
       const ptaxRate = latestQuote.cotacaoVenda;
       const ptaxDateTime = latestQuote.dataHoraCotacao;
+
+      // selectedBankKey is now validated before this point
       const bank = BANKS[selectedBankKey];
       const bankSpreadPercentage = bank.spread;
       const bankSpreadValue = ptaxRate * (bankSpreadPercentage / 100);
@@ -387,11 +391,12 @@ const CurrencyConverterPage = () => {
     removeIOF,
     editIofRate,
     customIofRate,
+    isBankHydrated, // Add isBankHydrated to dependencies if it affects logic inside
   ]);
 
   // Effect to update IOF calculation part of an existing result when IOF settings change
   useEffect(() => {
-    if (!result) return; // No result to update
+    if (!result || !selectedBankKey || !BANKS[selectedBankKey]) return; // Ensure bank is valid
 
     let newCurrentIofRateApplied;
     let newCalculatedWithCustomIof;
@@ -439,8 +444,14 @@ const CurrencyConverterPage = () => {
         calculatedWithCustomIof: newCalculatedWithCustomIof,
       });
     }
-    // }, [removeIOF, editIofRate, customIofRate, result]); // MODIFIED: Added customIofRate here as it's used inside
-  }, [removeIOF, editIofRate, customIofRate, result, FIXED_IOF_RATE]); // Added customIofRate and FIXED_IOF_RATE to dependency array
+  }, [
+    removeIOF,
+    editIofRate,
+    customIofRate,
+    result,
+    FIXED_IOF_RATE,
+    selectedBankKey,
+  ]);
 
   const renderIofTooltipContent = () => (
     <div className="space-y-1 text-left">
@@ -523,22 +534,32 @@ const CurrencyConverterPage = () => {
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Landmark className="h-5 w-5 text-slate-400" />
               </div>
-              <select
-                id="bank"
-                value={selectedBankKey}
-                onChange={(e) => setSelectedBankKey(e.target.value)}
-                className="w-full pl-10 pr-3 py-2.5 bg-slate-700 border border-slate-600 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none appearance-none"
-              >
-                {GROUPED_BANKS.map((group) => (
-                  <optgroup key={group.label} label={group.label}>
-                    {group.banks.map((bank) => (
-                      <option key={bank.key} value={bank.key}>
-                        {bank.name} ({formatCurrencyBR(bank.spread, 2)}% spread)
-                      </option>
+              {!isBankHydrated ? (
+                <div className="w-full pl-10 pr-3 py-2.5 bg-slate-700 border border-slate-600 rounded-md text-slate-500 italic">
+                  Carregando banco...
+                </div>
+              ) : (
+                <select
+                  id="bank"
+                  value={selectedBankKey}
+                  onChange={(e) => setSelectedBankKey(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2.5 bg-slate-700 border border-slate-600 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none appearance-none"
+                  disabled={!selectedBankKey} // Disable if selectedBankKey is still empty (shouldn't happen long)
+                >
+                  {/* Render options only if selectedBankKey is set or GROUPED_BANKS exist */}
+                  {(selectedBankKey || GROUPED_BANKS.length > 0) &&
+                    GROUPED_BANKS.map((group) => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.banks.map((bank) => (
+                          <option key={bank.key} value={bank.key}>
+                            {bank.name} ({formatCurrencyBR(bank.spread, 2)}%
+                            spread)
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
-                  </optgroup>
-                ))}
-              </select>
+                </select>
+              )}
             </div>
           </div>
           {/* Remove IOF Checkbox */}
@@ -624,7 +645,12 @@ const CurrencyConverterPage = () => {
           )}
           <button
             onClick={handleCalculate}
-            disabled={isLoading}
+            disabled={
+              isLoading ||
+              !isBankHydrated ||
+              !selectedBankKey ||
+              !BANKS[selectedBankKey]
+            }
             className="w-full flex items-center justify-center bg-sky-600 hover:bg-sky-700 text-white font-semibold py-3 px-4 rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-slate-800"
           >
             {isLoading ? (
@@ -649,7 +675,7 @@ const CurrencyConverterPage = () => {
           </div>
         )}
 
-        {result && !error && (
+        {result && !error && selectedBankKey && BANKS[selectedBankKey] && (
           <div className="mt-8 pt-6 border-t border-slate-700 space-y-3">
             <h2 className="text-xl font-semibold text-sky-400 mb-4">
               Resultado da Conversão:
@@ -669,7 +695,7 @@ const CurrencyConverterPage = () => {
                 {
                   icon: <Percent className="h-5 w-5" />,
                   label: `Spread do Banco (${
-                    BANKS[selectedBankKey]?.name || "Desconhecido" // Added fallback for safety
+                    BANKS[selectedBankKey]?.name || "Desconhecido"
                   } - ${formatCurrencyBR(result.bankSpreadPercentage, 2)}%)`,
                   value: `+ R$ ${formatCurrencyBR(result.bankSpreadValue, 4)}`,
                 },
@@ -700,7 +726,7 @@ const CurrencyConverterPage = () => {
               if (result.iofRemoved) totalLabelSuffix = " (IOF Removido)";
               else if (result.calculatedWithCustomIof)
                 totalLabelSuffix = " (IOF Personalizado)";
-              else if (result.currentIofRateApplied === 0)
+              else if (result.currentIofRateApplied === 0 && !result.iofRemoved)
                 totalLabelSuffix = " (IOF 0%)";
               items.push({
                 icon: <DollarSign className="h-5 w-5" />,
