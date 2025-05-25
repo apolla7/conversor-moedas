@@ -252,7 +252,7 @@ const CurrencyConverterPage = () => {
   // Effect to clear results only when core calculation parameters change
   useEffect(() => {
     setResult(null);
-  }, [selectedCurrency, purchaseAmount, selectedBankKey]);
+  }, [selectedCurrency, purchaseAmount, selectedBankKey, customIofRate]);
 
   const handleCalculate = useCallback(async () => {
     setError(null);
@@ -422,7 +422,7 @@ const CurrencyConverterPage = () => {
         calculatedWithCustomIof: newCalculatedWithCustomIof,
       });
     }
-  }, [removeIOF, editIofRate, customIofRate, result]); // Depend on all IOF settings and the result itself
+  }, [removeIOF, editIofRate, result]); // Depend on all IOF settings and the result itself
 
   const renderIofTooltipContent = () => (
     <div className="space-y-1 text-left">
