@@ -19,7 +19,7 @@
     "@eslint/eslintrc": "^3.3.1",
     "@tailwindcss/postcss": "^4.1.8",
     "@types/node": "^22.15.24",
-    "@types/react": "19.1.6",
+    "@types/react": "19.0.10",
     "@types/react-dom": "19.1.5",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.27.0",
@@ -30,8 +30,6 @@
   },
   "pnpm": {
     "overrides": {
-      "@types/react": "19.0.10",
-      "@types/react-dom": "19.0.4"
     }
   }
 }

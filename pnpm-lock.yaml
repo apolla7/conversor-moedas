@@ -4,10 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  '@types/react': 19.0.10
-  '@types/react-dom': 19.0.4
-
 dependencies:
   '@vercel/speed-insights':
     specifier: ^1.2.0
@@ -39,8 +35,8 @@ devDependencies:
     specifier: 19.0.10
     version: 19.0.10
   '@types/react-dom':
-    specifier: 19.0.4
-    version: 19.0.4(@types/react@19.0.10)
+    specifier: 19.1.5
+    version: 19.1.5(@types/react@19.0.10)
   autoprefixer:
     specifier: ^10.4.21
     version: 10.4.21(postcss@8.5.4)
@@ -754,10 +750,10 @@ packages:
       undici-types: 6.21.0
     dev: true
 
-  /@types/react-dom@19.0.4(@types/react@19.0.10):
-    resolution: {integrity: sha512-4fSQ8vWFkg+TGhePfUzVmat3eC14TXYSsiiDSLI0dVLsrm9gZFABjPy/Qu6TKgl1tq1Bu1yDsuQgY3A3DOjCcg==}
+  /@types/react-dom@19.1.5(@types/react@19.0.10):
+    resolution: {integrity: sha512-CMCjrWucUBZvohgZxkjd6S9h0nZxXjzus6yDfUb+xLxYM7VvjKNH1tQrE9GWLql1XoOP4/Ds3bwFqShHUYraGg==}
     peerDependencies:
-      '@types/react': 19.0.10
+      '@types/react': ^19.0.0
     dependencies:
       '@types/react': 19.0.10
     dev: true
