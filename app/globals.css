@@ -1,9 +1,24 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* app/globals.css */
 
-/* You can add other global styles here if needed */
-body {
-  /* Example: set a default background if not covered by components */
-  /* background-color: #yourchoice; */
+/* REPLACE your old @tailwind directives with this single line */
+@import "tailwindcss";
+
+/* Define your CSS variables, which your tailwind.config.ts references */
+:root {
+  /* These are example values for the dark theme you showed. Adjust as needed. */
+  --background: #0f172a; /* A dark slate/blue, like Tailwind's slate-900 */
+  --foreground: #e2e8f0; /* A light gray/white, like Tailwind's slate-200 */
+  /* Add any other global CSS variables your project uses */
 }
+
+body {
+  /* Apply the default background and foreground colors using the CSS variables */
+  background-color: var(--background);
+  color: var(--foreground);
+
+  /* Add any other global body styles you need, e.g., font-family if not handled by Tailwind base */
+  /* font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; */
+}
+
+/* You can add other specific global styles below if absolutely necessary, */
+/* but try to use Tailwind utility classes in your components as much as possible. */
