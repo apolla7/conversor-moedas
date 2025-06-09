@@ -12,7 +12,8 @@ import {
   Clock,
 } from "lucide-react";
 
-// --- CONSTANTS ---
+// --- CONSTANTS, INTERFACES, and HELPER FUNCTIONS (No changes needed here) ---
+// ... (Your existing constants, interfaces, and helper functions remain the same)
 const CURRENCIES = [
   { code: "USD", name: "Dólar Americano" },
   { code: "EUR", name: "Euro" },
@@ -251,26 +252,22 @@ const CurrencyConverterPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CalculationResult | null>(null);
 
-  // Effect to load the saved bank from localStorage ONCE after mount
   useEffect(() => {
     const savedBank = localStorage.getItem(LOCAL_STORAGE_LAST_BANK_KEY);
     if (savedBank && BANKS[savedBank]) {
       setSelectedBankKey(savedBank);
     } else {
-      setSelectedBankKey(DEFAULT_BANK_KEY); // Fallback to default
+      setSelectedBankKey(DEFAULT_BANK_KEY);
     }
-    setIsBankHydrated(true); // Mark as hydrated
-  }, []); // Empty dependency array: runs once on mount
+    setIsBankHydrated(true);
+  }, []);
 
-  // Effect to save selected bank to localStorage when it changes
   useEffect(() => {
-    // Only save if hydrated and selectedBankKey is a valid bank
     if (isBankHydrated && selectedBankKey && BANKS[selectedBankKey]) {
       localStorage.setItem(LOCAL_STORAGE_LAST_BANK_KEY, selectedBankKey);
     }
-  }, [selectedBankKey, isBankHydrated]); // Runs when selectedBankKey or isBankHydrated changes
+  }, [selectedBankKey, isBankHydrated]);
 
-  // Effect to clear results only when core calculation parameters change
   useEffect(() => {
     setResult(null);
   }, [selectedCurrency, purchaseAmount, selectedBankKey, customIofRate]);
@@ -321,14 +318,11 @@ const CurrencyConverterPage = () => {
       const latestQuote = data.value[0];
       const ptaxRate = latestQuote.cotacaoVenda;
       const ptaxDateTime = latestQuote.dataHoraCotacao;
-
-      // selectedBankKey is now validated before this point
       const bank = BANKS[selectedBankKey];
       const bankSpreadPercentage = bank.spread;
       const bankSpreadValue = ptaxRate * (bankSpreadPercentage / 100);
       const rateWithSpread = ptaxRate + bankSpreadValue;
       const amountInBRLNoIOF = amount * rateWithSpread;
-
       let iofRateToUse = FIXED_IOF_RATE;
       let wasCustomIofUsed = false;
       const fixedIofPercentageForDisplay = FIXED_IOF_RATE * 100;
@@ -391,12 +385,11 @@ const CurrencyConverterPage = () => {
     removeIOF,
     editIofRate,
     customIofRate,
-    isBankHydrated, // Add isBankHydrated to dependencies if it affects logic inside
+    isBankHydrated,
   ]);
 
-  // Effect to update IOF calculation part of an existing result when IOF settings change
   useEffect(() => {
-    if (!result || !selectedBankKey || !BANKS[selectedBankKey]) return; // Ensure bank is valid
+    if (!result || !selectedBankKey || !BANKS[selectedBankKey]) return;
 
     let newCurrentIofRateApplied;
     let newCalculatedWithCustomIof;
@@ -467,13 +460,20 @@ const CurrencyConverterPage = () => {
     </div>
   );
 
+  // --- CHANGE #1: ADD FORM SUBMIT HANDLER ---
+  const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); // Prevents the browser from reloading the page
+    handleCalculate(); // Calls your existing calculation logic
+  };
+
   return (
     <main className="min-h-screen bg-slate-900 text-slate-100 flex flex-col items-center justify-center p-4 selection:bg-sky-500 selection:text-white">
       <div className="bg-slate-800 p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-2xl">
         <h1 className="text-3xl font-bold text-sky-400 mb-6 text-center">
           Conversor de Moedas
         </h1>
-        <div className="space-y-6">
+        {/* --- CHANGE #2: WRAP INPUTS IN A FORM ELEMENT --- */}
+        <form onSubmit={handleFormSubmit} className="space-y-6">
           {/* Currency Select */}
           <div>
             <label
@@ -544,9 +544,8 @@ const CurrencyConverterPage = () => {
                   value={selectedBankKey}
                   onChange={(e) => setSelectedBankKey(e.target.value)}
                   className="w-full pl-10 pr-3 py-2.5 bg-slate-700 border border-slate-600 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none appearance-none"
-                  disabled={!selectedBankKey} // Disable if selectedBankKey is still empty (shouldn't happen long)
+                  disabled={!selectedBankKey}
                 >
-                  {/* Render options only if selectedBankKey is set or GROUPED_BANKS exist */}
                   {(selectedBankKey || GROUPED_BANKS.length > 0) &&
                     GROUPED_BANKS.map((group) => (
                       <optgroup key={group.label} label={group.label}>
@@ -562,7 +561,7 @@ const CurrencyConverterPage = () => {
               )}
             </div>
           </div>
-          {/* Remove IOF Checkbox */}
+          {/* IOF Checkboxes and Custom Input... */}
           {!editIofRate && (
             <div className="pt-1">
               <label
@@ -586,7 +585,6 @@ const CurrencyConverterPage = () => {
               </label>
             </div>
           )}
-          {/* Edit IOF Checkbox */}
           {!removeIOF && (
             <div className="pt-1">
               <label
@@ -610,7 +608,6 @@ const CurrencyConverterPage = () => {
               </label>
             </div>
           )}
-          {/* Custom IOF Input */}
           {editIofRate && (
             <div className="pt-3">
               <label
@@ -643,8 +640,11 @@ const CurrencyConverterPage = () => {
               </p>
             </div>
           )}
+
+          {/* --- CHANGE #3: UPDATE THE BUTTON --- */}
           <button
-            onClick={handleCalculate}
+            type="submit" // Use type="submit"
+            // onClick={handleCalculate} // Remove onClick
             disabled={
               isLoading ||
               !isBankHydrated ||
@@ -663,8 +663,9 @@ const CurrencyConverterPage = () => {
               </>
             )}
           </button>
-        </div>
+        </form>
 
+        {/* --- The rest of your component (error/result display, footer) remains the same --- */}
         {error && (
           <div
             role="alert"
