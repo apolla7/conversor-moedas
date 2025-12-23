@@ -12,8 +12,8 @@ import {
   Clock,
 } from "lucide-react";
 
-// --- CONSTANTS, INTERFACES, and HELPER FUNCTIONS (No changes needed here) ---
-// ... (Your existing constants, interfaces, and helper functions remain the same)
+// --- CONSTANTS, INTERFACES, and HELPER FUNCTIONS ---
+
 const CURRENCIES = [
   { code: "USD", name: "Dólar Americano" },
   { code: "EUR", name: "Euro" },
@@ -27,38 +27,78 @@ const CURRENCIES = [
   { code: "SEK", name: "Coroa Sueca" },
 ];
 
+// UPDATED BANKS CONSTANT BASED ON IMAGES
 const BANKS: Record<string, { name: string; spread: number }> = {
-  Safra: { name: "Safra", spread: 7.0 },
-  "BTG Pactual": { name: "BTG Pactual", spread: 6.0 },
-  Santander: { name: "Santander", spread: 6.0 },
-  Pan: { name: "Pan", spread: 6.0 },
-  Itaú: { name: "Itaú", spread: 5.5 },
-  Credicard: { name: "Credicard", spread: 5.5 },
-  Bradesco: { name: "Bradesco", spread: 5.3 },
-  "C6 Bank": { name: "C6 Bank", spread: 5.25 },
-  "Banco do Nordeste": { name: "Banco do Nordeste", spread: 5.0 },
-  Next: { name: "Next", spread: 5.0 },
-  PicPay: { name: "PicPay", spread: 5.0 },
-  Uniprime: { name: "Uniprime", spread: 5.0 },
-  "Porto Bank": { name: "Porto Bank", spread: 4.99 },
+  // 0% Spread Group
+  "Nubank Ultravioleta Conta Global": {
+    name: "Nubank Ultravioleta - Conta Global",
+    spread: 0.0,
+  },
+  "Mercado Pago": { name: "Mercado Pago", spread: 0.0 },
+  Cresol: { name: "Cresol", spread: 0.0 },
+  Sicoob: { name: "Sicoob", spread: 0.0 },
+  Sisprime: { name: "Sisprime", spread: 0.0 },
+  Unicred: { name: "Unicred", spread: 0.0 },
+  "Uniprime Global": { name: "Uniprime - Global", spread: 0.0 },
+  "Recarga Pay": { name: "Recarga Pay", spread: 0.0 },
+
+  // < 1% Spread Group
+  Revolut: { name: "Revolut", spread: 0.6 },
+  "Itaú Personnalité Conta Global": {
+    name: "Itaú Conta - Conta Global",
+    spread: 0.72,
+  },
+  Wise: { name: "Wise", spread: 0.8 },
+  "Remessa Online": { name: "Remessa Online", spread: 0.8 },
+  "Santander Global": { name: "Santander - Global", spread: 0.8 },
+  "Bradesco My Account": { name: "Bradesco - My Account", spread: 0.83 },
+  "C6 Conta Global": { name: "C6 - Conta Global", spread: 0.9 },
+  "Inter Global": { name: "Inter - Global", spread: 0.99 },
+
+  // 1% - 3% Spread Group
+  "Nomad Nível 5": { name: "Nomad Nível 5", spread: 1.0 },
+  Sicredi: { name: "Sicredi", spread: 1.0 },
+  "Nomad Nível 4": { name: "Nomad Nível 4", spread: 1.4 },
+  "Nomad Nível 3": { name: "Nomad Nível 3", spread: 1.7 },
+  "Nomad Nível 2": { name: "Nomad Nível 2", spread: 1.9 },
+  "Nomad Nível 1": { name: "Nomad Nível 1", spread: 2.0 },
+  "BS2 GO!": { name: "BS2 GO!", spread: 2.0 },
+  "XP Global": { name: "XP - Global", spread: 2.25 },
+  Avenue: { name: "Avenue", spread: 2.5 },
+  Banrisul: { name: "Banrisul", spread: 3.0 },
+
+  // 3.5% - 4% Spread Group
+  "Nubank Ultravioleta": { name: "Nubank Ultravioleta", spread: 3.5 },
   Caixa: { name: "Caixa", spread: 4.0 },
   "Banco do Brasil": { name: "Banco do Brasil", spread: 4.0 },
+  "Banco do Brasil Premium": { name: "Banco do Brasil Premium", spread: 4.0 },
   Banestes: { name: "Banestes", spread: 4.0 },
   BRB: { name: "BRB", spread: 4.0 },
   BV: { name: "BV", spread: 4.0 },
-  Inter: { name: "Inter", spread: 4.0 },
+  Inter: { name: "Inter - Cartão", spread: 4.0 },
   Neon: { name: "Neon", spread: 4.0 },
-  Nubank: { name: "Nubank", spread: 4.0 },
-  "Nomad Explorer": { name: "Nomad Explorer", spread: 4.0 },
-  "Genial Investimentos": { name: "Genial Investimentos", spread: 4.0 },
-  Banrisul: { name: "Banrisul", spread: 3.0 },
-  Sicredi: { name: "Sicredi", spread: 1.0 },
-  Banese: { name: "Banese", spread: 0 },
-  Cresol: { name: "Cresol", spread: 0 },
-  Sicoob: { name: "Sicoob", spread: 0 },
-  Sisprime: { name: "Sisprime", spread: 0 },
-  Unicred: { name: "Unicred", spread: 0 },
+  Nubank: { name: "Nubank - Padrão", spread: 4.0 },
+  "Nomad Crédito": { name: "Nomad - Crédito", spread: 4.0 },
+  Genial: { name: "Genial", spread: 4.0 },
+  Banese: { name: "Banese", spread: 4.0 },
+
+  // > 4% Spread Group
+  "Porto Bank": { name: "Porto Bank", spread: 4.99 },
+  "Banco do Nordeste": { name: "Banco do Nordeste", spread: 5.0 },
+  Next: { name: "Next", spread: 5.0 },
+  PicPay: { name: "PicPay", spread: 5.0 },
+  Uniprime: { name: "Uniprime - Cartão", spread: 5.0 },
+  "XP Banco": { name: "XP - Banco", spread: 5.0 },
+  "C6 Bank": { name: "C6 Bank - Cartão", spread: 5.25 },
+  Bradesco: { name: "Bradesco", spread: 5.3 },
+  Safra: { name: "Safra", spread: 5.5 },
+  Credicard: { name: "Credicard", spread: 5.5 },
+  Itaú: { name: "Itaú", spread: 5.5 },
+  BTG: { name: "BTG", spread: 6.0 },
+  Santander: { name: "Santander", spread: 6.0 },
+  Pan: { name: "Pan", spread: 6.0 },
 };
+
 const FIXED_IOF_RATE = 0.035;
 
 // --- INTERFACES ---
@@ -460,7 +500,6 @@ const CurrencyConverterPage = () => {
     </div>
   );
 
-  // --- CHANGE #1: ADD FORM SUBMIT HANDLER ---
   const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault(); // Prevents the browser from reloading the page
     handleCalculate(); // Calls your existing calculation logic
@@ -472,7 +511,6 @@ const CurrencyConverterPage = () => {
         <h1 className="text-3xl font-bold text-sky-400 mb-6 text-center">
           Conversor de Moedas
         </h1>
-        {/* --- CHANGE #2: WRAP INPUTS IN A FORM ELEMENT --- */}
         <form onSubmit={handleFormSubmit} className="space-y-6">
           {/* Currency Select */}
           <div>
@@ -641,10 +679,8 @@ const CurrencyConverterPage = () => {
             </div>
           )}
 
-          {/* --- CHANGE #3: UPDATE THE BUTTON --- */}
           <button
-            type="submit" // Use type="submit"
-            // onClick={handleCalculate} // Remove onClick
+            type="submit"
             disabled={
               isLoading ||
               !isBankHydrated ||
@@ -665,7 +701,6 @@ const CurrencyConverterPage = () => {
           </button>
         </form>
 
-        {/* --- The rest of your component (error/result display, footer) remains the same --- */}
         {error && (
           <div
             role="alert"
@@ -785,7 +820,7 @@ const CurrencyConverterPage = () => {
         <br />
         Valores aproximados para moedas que não sejam USD.
         <br />
-        Lista de Spread atualizada em 23/05/2025. (
+        Lista de Spread atualizada em 12/12/2025. (
         <a
           href="https://www.melhoresdestinos.com.br/novo-iof-cartao-de-credito-conta-global-ranking-spread.html"
           target="_blank"
