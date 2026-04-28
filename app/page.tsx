@@ -83,7 +83,7 @@ const BANKS: Record<string, { name: string; spread: number }> = {
   Banese: { name: "Banese", spread: 4.0 },
 
   // > 4% Spread Group
-  "Porto Bank": { name: "Porto Bank", spread: 4.99 },
+  "Porto Bank": { name: "Porto Bank", spread: 5.75 },
   "Banco do Nordeste": { name: "Banco do Nordeste", spread: 5.0 },
   Next: { name: "Next", spread: 5.0 },
   PicPay: { name: "PicPay", spread: 5.0 },
@@ -277,6 +277,8 @@ const DEFAULT_BANK_KEY = "Porto Bank";
 
 // --- COMPONENT ---
 const CurrencyConverterPage = () => {
+  const [isClient, setIsClient] = useState(false);
+
   const [selectedCurrency, setSelectedCurrency] = useState<string>(
     CURRENCIES[0].code
   );
