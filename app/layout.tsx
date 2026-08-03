@@ -1,6 +1,7 @@
 // app/layout.tsx
 import type { Metadata } from "next";
 import { SpeedInsights } from "@vercel/speed-insights/next"; // 1. Import SpeedInsights
+import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"; // Make sure this file exists for Tailwind CSS
 
 export const metadata: Metadata = {
