@@ -92,8 +92,8 @@ const BANKS: Record<string, BankData> = {
     defaultIof: 3.5,
     points: "Sim",
   },
-  "Uniprime (0% Spread)": {
-    name: "Uniprime (0% Spread)",
+  "Uniprime - Sem Spread": {
+    name: "Uniprime - Sem Spread",
     type: "Cartão de Crédito",
     spread: 0.0,
     defaultIof: 3.5,
@@ -366,8 +366,8 @@ const BANKS: Record<string, BankData> = {
     defaultIof: 3.5,
     points: "Cashback",
   },
-  "Uniprime (5% Spread)": {
-    name: "Uniprime (5% Spread)",
+  Uniprime: {
+    name: "Uniprime",
     type: "Cartão de Crédito",
     spread: 5.0,
     defaultIof: 3.5,
@@ -651,22 +651,22 @@ interface TooltipProps {
 const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
   const [isVisible, setIsVisible] = useState(false);
   return (
-    <div
+    <span
       className="relative inline-block"
       onMouseEnter={() => setIsVisible(true)}
       onMouseLeave={() => setIsVisible(false)}
     >
       {children}
       {isVisible && (
-        <div
+        <span
           role="tooltip"
-          className="absolute z-10 w-max p-2 -mt-1 text-xs leading-tight text-white bg-slate-700 border border-slate-600 shadow-lg rounded-md bottom-full left-1/2 transform -translate-x-1/2 mb-2 transition-opacity duration-150"
+          className="absolute z-10 w-max p-2 -mt-1 text-xs leading-tight text-white bg-slate-700 border border-slate-600 shadow-lg rounded-md bottom-full left-1/2 transform -translate-x-1/2 mb-2 transition-opacity duration-150 block"
         >
           {content}
-          <div className="absolute left-1/2 transform -translate-x-1/2 bottom-[-4px] w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-slate-700"></div>
-        </div>
+          <span className="absolute left-1/2 transform -translate-x-1/2 bottom-[-4px] w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-slate-700 block"></span>
+        </span>
       )}
-    </div>
+    </span>
   );
 };
 
@@ -840,20 +840,43 @@ const CurrencyConverterPage = () => {
   };
 
   const renderIofTooltipContent = () => (
-    <div className="space-y-1 text-left max-w-xs">
-      <h4 className="font-semibold text-slate-300 mb-1">
+    <span className="block space-y-1 text-left max-w-xs">
+      <span className="block font-semibold text-slate-300 mb-1">
         Alíquotas de IOF cadastradas:
-      </h4>
-      <p className="text-slate-400">
+      </span>
+      <span className="block text-slate-400">
         • <strong>3,50%</strong> padrão para contas globais e cartões comuns.
-      </p>
-      <p className="text-slate-400">
+      </span>
+      <span className="block text-slate-400">
         • <strong>0,00%</strong> para cartões isentos (Porto Bank, BTG, Caixa Visa, Nubank Ultravioleta).
-      </p>
-      <p className="text-slate-400">
+      </span>
+      <span className="block text-slate-400">
         • <strong>1,10%</strong> para Banco do Brasil Premium.
-      </p>
-    </div>
+      </span>
+    </span>
+  );
+
+  const renderCustoTotalTooltipContent = () => (
+    <span className="block space-y-1 text-left max-w-xs p-1">
+      <span className="block font-semibold text-sky-300 mb-1">
+        Fórmula: (1 + Spread) × (1 + IOF) - 1
+      </span>
+      <span className="block text-slate-300">
+        <strong>Exemplo prático (100 USD | PTAX R$ 5,00):</strong>
+      </span>
+      <span className="block text-slate-300">
+        1. PTAX + 5% Spread = <strong>R$ 5,2500</strong>
+      </span>
+      <span className="block text-slate-300">
+        2. IOF 3,5% sobre R$ 5,2500 = <strong>+ R$ 0,18375</strong>
+      </span>
+      <span className="block text-slate-300">
+        3. Cotação Final BRL = <strong>R$ 5,43375</strong>
+      </span>
+      <span className="block text-sky-300 font-medium pt-1 border-t border-slate-600 mt-1">
+        Custo Efetivo: (1,05 × 1,035 - 1) = <strong>8,68%</strong> (e não 8,50%).
+      </span>
+    </span>
   );
 
   const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -1188,7 +1211,7 @@ const CurrencyConverterPage = () => {
                 items.push({
                   icon: <DollarSign className="h-5 w-5" />,
                   label: `Valor Final da Compra em BRL${
-                    result.bankDefaultIof === 0 ? " (Isenção de IOF 0%)" : ""
+                    result.bankDefaultIof === 0 ? " (IOF 0% - Isento)" : ""
                   }`,
                   value: `R$ ${formatCurrencyBR(result.totalAmountInBRL, 2)}`,
                   isTotal: true,
@@ -1235,27 +1258,40 @@ const CurrencyConverterPage = () => {
         )}
       </div>
 
-      <footer className="text-center text-sm text-slate-500 mt-8 pb-4">
-        Cotações PTAX fornecidas pelo Banco Central do Brasil. Spread e{" "}
-        <Tooltip content={renderIofTooltipContent()}>
-          <span className="underline decoration-dotted cursor-help text-sky-400 hover:text-sky-300">
-            IOF
-          </span>
-        </Tooltip>{" "}
-        aplicados.
-        <br />
-        Valores aproximados para moedas que não sejam USD (inclui margem de conversão da bandeira).
-        <br />
-        Lista de Spread atualizada. (
-        <a
-          href="https://www.melhoresdestinos.com.br/novo-iof-cartao-de-credito-conta-global-ranking-spread.html"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sky-400 hover:text-sky-300 hover:underline"
-        >
-          Fonte
-        </a>
-        )
+      <footer className="text-center text-sm text-slate-500 mt-8 pb-4 space-y-1.5 max-w-2xl mx-auto">
+        <div>
+          O custo total é{" "}
+          <Tooltip content={renderCustoTotalTooltipContent()}>
+            <span className="underline decoration-dotted cursor-help text-sky-400 hover:text-sky-300">
+              calculado
+            </span>
+          </Tooltip>{" "}
+          considerando que o IOF incide somente após a conversão com o spread do banco.
+        </div>
+        <div>
+          Valores aproximados para moedas que não sejam USD (inclui margem de conversão da bandeira).
+        </div>
+        <div>
+          Cotações PTAX fornecidas pelo Banco Central do Brasil. Spread e{" "}
+          <Tooltip content={renderIofTooltipContent()}>
+            <span className="underline decoration-dotted cursor-help text-sky-400 hover:text-sky-300">
+              IOF
+            </span>
+          </Tooltip>{" "}
+          aplicados.
+        </div>
+        <div>
+          Lista de Spread atualizada em 10/12/2025. (
+          <a
+            href="https://www.melhoresdestinos.com.br/novo-iof-cartao-de-credito-conta-global-ranking-spread.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sky-400 hover:text-sky-300 hover:underline"
+          >
+            Fonte
+          </a>
+          )
+        </div>
       </footer>
     </main>
   );
