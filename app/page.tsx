@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   ArrowRightLeft,
   Landmark,
@@ -14,6 +14,7 @@ import {
   Sparkles,
   Percent,
   Info,
+  Bug,
 } from "lucide-react";
 
 // --- CONSTANTS, INTERFACES, and HELPER FUNCTIONS ---
@@ -21,20 +22,26 @@ import {
 export interface CurrencyData {
   code: string;
   name: string;
-  networkAdjustment: number; // Percentual estimado de ajuste da bandeira (Visa/Mastercard)
+  networkAdjustment: number; // Percentual estimado de ajuste da bandeira (fallback)
 }
 
+// 15 MOEDAS RELEVANTES ORDENADAS POR RELEVÂNCIA
 const CURRENCIES: CurrencyData[] = [
   { code: "USD", name: "Dólar Americano", networkAdjustment: 0.0 },
   { code: "EUR", name: "Euro", networkAdjustment: 1.35 },
   { code: "GBP", name: "Libra Esterlina", networkAdjustment: 1.3 },
-  { code: "AUD", name: "Dólar Australiano", networkAdjustment: 1.35 },
+  { code: "ARS", name: "Peso Argentino", networkAdjustment: 2.5 },
+  { code: "CLP", name: "Peso Chileno", networkAdjustment: 2.0 },
   { code: "CAD", name: "Dólar Canadense", networkAdjustment: 1.35 },
+  { code: "UYU", name: "Peso Uruguaio", networkAdjustment: 2.5 },
+  { code: "MXN", name: "Peso Mexicano", networkAdjustment: 2.0 },
+  { code: "AUD", name: "Dólar Australiano", networkAdjustment: 1.35 },
   { code: "CHF", name: "Franco Suíço", networkAdjustment: 1.35 },
-  { code: "DKK", name: "Coroa Dinamarquesa", networkAdjustment: 1.35 },
   { code: "JPY", name: "Iene Japonês", networkAdjustment: 1.45 },
-  { code: "NOK", name: "Coroa Norueguesa", networkAdjustment: 1.35 },
-  { code: "SEK", name: "Coroa Sueca", networkAdjustment: 1.35 },
+  { code: "AED", name: "Dirham (Dubai)", networkAdjustment: 1.5 },
+  { code: "COP", name: "Peso Colombiano", networkAdjustment: 2.5 },
+  { code: "PEN", name: "Sol Peruano", networkAdjustment: 2.5 },
+  { code: "THB", name: "Baht Tailandês", networkAdjustment: 2.5 },
 ];
 
 export interface BankData {
@@ -108,6 +115,13 @@ const BANKS: Record<string, BankData> = {
   },
 
   // < 1% Spread Group
+  ARQ: {
+    name: "ARQ",
+    type: "Conta Global",
+    spread: 0.5,
+    defaultIof: 0.0,
+    points: "Não",
+  },
   Revolut: {
     name: "Revolut",
     type: "Conta Global",
@@ -118,7 +132,7 @@ const BANKS: Record<string, BankData> = {
   "Meli Dólar": {
     name: "Meli Dólar",
     type: "Conta Global",
-    spread: 0.7,
+    spread: 0.65,
     defaultIof: 0.0,
     points: "Não",
   },
@@ -462,10 +476,15 @@ interface CalculationResult {
   foreignCurrencyCode: string;
   bankDefaultIof: number;
   potentialSavingsBRL: number;
+  equivalentAmountUSD?: number;
+  visaUnitRate?: number;
+  visaDate?: string;
+  isLiveVisaUsed?: boolean;
+  forcedPtaxDebug?: boolean;
 }
 interface ResultDisplayItem {
   icon: React.ReactNode;
-  label: string;
+  label: React.ReactNode;
   value: string;
   isTotal?: boolean;
 }
@@ -533,6 +552,83 @@ const formatPtaxDateTime = (dateTimeString: string): string => {
 const getEffectiveTotalFee = (spread: number, iof: number): number => {
   return ((1 + spread / 100) * (1 + iof / 100) - 1) * 100;
 };
+
+// FUNÇÃO EXECUTADA DIRETAMENTE NO NAVEGADOR (CLIENT-SIDE)
+async function obterCotacaoVisaAtual(
+  fromCurr = "EUR",
+  toCurr = "USD",
+  amount = 1,
+  fee = 0
+) {
+  const formatarData = (dateObj: Date) => {
+    const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
+    const dd = String(dateObj.getDate()).padStart(2, "0");
+    const yyyy = dateObj.getFullYear();
+    return `${mm}/${dd}/${yyyy}`;
+  };
+
+  let dataObj = new Date();
+  let dataStr = formatarData(dataObj);
+
+  const buscarNaVisa = async (dataParaBuscar: string) => {
+    const url = `https://usa.visa.com/cmsapi/fx/rates?amount=1&fee=${fee}&utcConvertedDate=${encodeURIComponent(
+      dataParaBuscar
+    )}&exchangedate=${encodeURIComponent(
+      dataParaBuscar
+    )}&fromCurr=${toCurr}&toCurr=${fromCurr}`;
+
+    const headers = {
+      Accept: "application/json, text/plain, */*",
+    };
+
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new Error(`Status HTTP ${res.status}`);
+    return await res.json();
+  };
+
+  try {
+    let data = await buscarNaVisa(dataStr);
+
+    if (!data.convertedAmount && !data.originalValues?.toAmountWithVisaRate) {
+      dataObj.setDate(dataObj.getDate() - 1);
+      dataStr = formatarData(dataObj);
+      data = await buscarNaVisa(dataStr);
+    }
+
+    const taxaUnitariaVisa = parseFloat(
+      data.convertedAmount || data.originalValues?.toAmountWithVisaRate
+    );
+    const markupOficial = data.benchMarkAmount || "0.0";
+    const valorTotal = parseFloat((taxaUnitariaVisa * amount).toFixed(4));
+
+    if (isNaN(taxaUnitariaVisa) || taxaUnitariaVisa <= 0) {
+      throw new Error("Taxa Visa inválida");
+    }
+
+    // Formata a data para BR (DD/MM/YYYY)
+    const dateParts = dataStr.split("/");
+    const formattedDateBR =
+      dateParts.length === 3
+        ? `${dateParts[1]}/${dateParts[0]}/${dateParts[2]}`
+        : dataStr;
+
+    return {
+      sucesso: true,
+      moedaOrigem: fromCurr,
+      moedaDestino: toCurr,
+      dataCotacaoUsada: formattedDateBR,
+      taxaUnitariaVisa: taxaUnitariaVisa,
+      quantidadeConvertida: amount,
+      valorTotalConvertido: valorTotal,
+      markupOficialVisa: `${markupOficial}%`,
+    };
+  } catch (err) {
+    return {
+      sucesso: false,
+      erro: err instanceof Error ? err.message : "Erro ao consultar Visa no cliente",
+    };
+  }
+}
 
 const createGroupedBankOptions = (
   banksData: Record<string, BankData>,
@@ -643,24 +739,39 @@ const formatBankOptionLabel = (bank: BankOption, mode: SortMode) => {
   return `${bank.name} (${spreadStr} | ${iofStr})`;
 };
 
-// --- Simple Tooltip Component ---
+// --- Simple Interactive Tooltip Component ---
 interface TooltipProps {
   content: React.ReactNode;
   children: React.ReactNode;
 }
 const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
   const [isVisible, setIsVisible] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMouseEnter = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setIsVisible(true);
+  };
+
+  const handleMouseLeave = () => {
+    timeoutRef.current = setTimeout(() => {
+      setIsVisible(false);
+    }, 200); // 200ms delay for seamless link clicking
+  };
+
   return (
     <span
       className="relative inline-block"
-      onMouseEnter={() => setIsVisible(true)}
-      onMouseLeave={() => setIsVisible(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       {children}
       {isVisible && (
         <span
           role="tooltip"
-          className="absolute z-10 w-max p-2 -mt-1 text-xs leading-tight text-white bg-slate-700 border border-slate-600 shadow-lg rounded-md bottom-full left-1/2 transform -translate-x-1/2 mb-2 transition-opacity duration-150 block"
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          className="absolute z-20 w-max p-2.5 -mt-1 text-xs leading-tight text-white bg-slate-700 border border-slate-600 shadow-xl rounded-md bottom-full left-1/2 transform -translate-x-1/2 mb-2 block pointer-events-auto"
         >
           {content}
           <span className="absolute left-1/2 transform -translate-x-1/2 bottom-[-4px] w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-slate-700 block"></span>
@@ -688,6 +799,20 @@ const CurrencyConverterPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CalculationResult | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
+
+  // EXPOR FUNÇÃO DE DEBUG TOGGLE NO CONSOLE DO NAVEGADOR
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).toggleForcePtax = (force?: boolean) => {
+        const current = (window as any).FORCE_PTAX;
+        const nextState = force !== undefined ? force : !current;
+        (window as any).FORCE_PTAX = nextState;
+        console.log(`🔧 [Debug Mode] Forçar PTAX (Ignorar Visa): ${nextState}`);
+        alert(`Modo Forçar PTAX está agora: ${nextState ? "ATIVADO" : "DESATIVADO"}`);
+        return nextState;
+      };
+    }
+  }, []);
 
   useEffect(() => {
     const savedBank = localStorage.getItem(LOCAL_STORAGE_LAST_BANK_KEY);
@@ -737,47 +862,118 @@ const CurrencyConverterPage = () => {
     sevenDaysAgo.setDate(today.getDate() - 7);
     const endDate = formatDateForAPI(today);
     const startDate = formatDateForAPI(sevenDaysAgo);
+
     const apiUrl = `https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoMoedaPeriodo(moeda=@moeda,dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)?@moeda='${selectedCurrency}'&@dataInicial='${startDate}'&@dataFinalCotacao='${endDate}'&$top=100&$filter=tipoBoletim eq 'Fechamento'&$orderby=dataHoraCotacao desc&$format=json`;
 
     try {
-      const response = await fetch(apiUrl);
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(
-          `Erro na API do Banco Central (${response.status}): ${response.statusText}. Detalhes: ${errorData}`
-        );
+      // Check for debug force PTAX mode
+      const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const isForcedPtax =
+        urlParams?.get("forcePtax") === "true" ||
+        (typeof window !== "undefined" && (window as any).FORCE_PTAX === true);
+
+      // Parallel fetches: BCB PTAX for currency, BCB PTAX for USD (if non-USD), and Client-Side Visa Rate (if non-USD and not forced PTAX)
+      const fetches: [
+        Promise<Response>,
+        Promise<Response> | null,
+        Promise<any> | null
+      ] = [
+        fetch(apiUrl),
+        selectedCurrency !== "USD"
+          ? fetch(
+              `https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoMoedaPeriodo(moeda=@moeda,dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)?@moeda='USD'&@dataInicial='${startDate}'&@dataFinalCotacao='${endDate}'&$top=100&$filter=tipoBoletim eq 'Fechamento'&$orderby=dataHoraCotacao desc&$format=json`
+            )
+          : null,
+        selectedCurrency !== "USD" && !isForcedPtax
+          ? obterCotacaoVisaAtual(selectedCurrency, "USD", amount)
+          : null,
+      ];
+
+      const [response, usdResponse, visaResult] = await Promise.all(fetches);
+
+      let ptaxRate = 0;
+      let ptaxDateTime = "";
+
+      if (response.ok) {
+        const data: ApiResponse = await response.json();
+        if (data.value && data.value.length > 0) {
+          const latestQuote = data.value[0];
+          ptaxRate = latestQuote.cotacaoVenda;
+          ptaxDateTime = latestQuote.dataHoraCotacao;
+        }
       }
-      const data: ApiResponse = await response.json();
-      if (!data.value || data.value.length === 0) {
+
+      // Check client-side Visa rate result
+      let liveVisaUnitRate: number | undefined = undefined;
+      let equivalentAmountUSD: number | undefined = undefined;
+      let visaDateStr: string | undefined = undefined;
+      let isLiveVisaUsed = false;
+
+      if (!isForcedPtax && selectedCurrency !== "USD" && visaResult && visaResult.sucesso) {
+        liveVisaUnitRate = visaResult.taxaUnitariaVisa;
+        equivalentAmountUSD = visaResult.valorTotalConvertido;
+        visaDateStr = visaResult.dataCotacaoUsada;
+        isLiveVisaUsed = true;
+      }
+
+      // If neither Visa nor PTAX available for selected currency
+      if (!isLiveVisaUsed && ptaxRate <= 0) {
         setError(
-          "Não foi possível obter a cotação PTAX para a moeda selecionada no período. Verifique se a moeda é coberta pelo PTAX ou tente mais tarde."
+          `Não foi possível obter a cotação para ${selectedCurrency}: a consulta em tempo real à bandeira esteve indisponível e esta moeda não possui cotação PTAX direta fornecida pelo Banco Central. Por favor, tente novamente mais tarde.`
         );
         setResult(null);
         setIsLoading(false);
         return;
       }
-      const latestQuote = data.value[0];
-      const ptaxRate = latestQuote.cotacaoVenda;
-      const ptaxDateTime = latestQuote.dataHoraCotacao;
 
-      // Card Brand Adjustment (Visa/Mastercard conversion for non-USD)
+      let usdPtaxRate = ptaxRate;
+      if (selectedCurrency !== "USD" && usdResponse && usdResponse.ok) {
+        try {
+          const usdData: ApiResponse = await usdResponse.json();
+          if (usdData.value && usdData.value.length > 0) {
+            usdPtaxRate = usdData.value[0].cotacaoVenda;
+          }
+        } catch (e) {
+          console.warn("Could not parse USD PTAX response:", e);
+        }
+      }
+
+      // Fallback network adjustment calculation if Visa rate is not used
       const currencyData = CURRENCIES.find((c) => c.code === selectedCurrency);
       const networkAdjustmentPercentage = currencyData?.networkAdjustment ?? 0;
       const networkAdjustmentValue = ptaxRate * (networkAdjustmentPercentage / 100);
       const rateWithNetwork = ptaxRate + networkAdjustmentValue;
 
+      if (!isLiveVisaUsed && selectedCurrency !== "USD" && usdPtaxRate > 0) {
+        equivalentAmountUSD = (amount * rateWithNetwork) / usdPtaxRate;
+      }
+
       const bank = BANKS[selectedBankKey];
       const bankSpreadPercentage = bank.spread;
-      const bankSpreadValue = rateWithNetwork * (bankSpreadPercentage / 100);
-      const rateWithSpread = rateWithNetwork + bankSpreadValue;
-      const amountInBRLNoIOF = amount * rateWithSpread;
+
+      let bankSpreadValue = 0;
+      let rateWithSpread = 0;
+      let amountInBRLNoIOF = 0;
+
+      if (isLiveVisaUsed && equivalentAmountUSD !== undefined) {
+        // Precise Real-World calculation: USD Amount * USD PTAX * (1 + Bank Spread)
+        const usdValueNoSpread = equivalentAmountUSD * usdPtaxRate;
+        bankSpreadValue = (usdValueNoSpread * bankSpreadPercentage) / 100 / amount;
+        rateWithSpread = usdPtaxRate * (1 + bankSpreadPercentage / 100) * (equivalentAmountUSD / amount);
+        amountInBRLNoIOF = usdValueNoSpread * (1 + bankSpreadPercentage / 100);
+      } else {
+        // Fallback PTAX estimation
+        bankSpreadValue = rateWithNetwork * (bankSpreadPercentage / 100);
+        rateWithSpread = rateWithNetwork + bankSpreadValue;
+        amountInBRLNoIOF = amount * rateWithSpread;
+      }
 
       // Automated IOF using saved value for selected bank
       const iofRateToUse = bank.defaultIof / 100;
       const iofValue = amountInBRLNoIOF * iofRateToUse;
       const totalAmountInBRL = amountInBRLNoIOF + iofValue;
 
-      // Benchmark calculation: standard lowest fee (3.50% total cost, ignoring Meli Dólar)
+      // Benchmark calculation: standard lowest fee (3.50% total cost, ignoring virtual currencies)
       const standardBenchmarkFeePercent = 0.035; // 3.50%
       const benchmarkAmountBRL = amount * rateWithNetwork * (1 + standardBenchmarkFeePercent);
 
@@ -805,6 +1001,11 @@ const CurrencyConverterPage = () => {
         foreignCurrencyCode: selectedCurrency,
         bankDefaultIof: bank.defaultIof,
         potentialSavingsBRL,
+        equivalentAmountUSD,
+        visaUnitRate: liveVisaUnitRate,
+        visaDate: visaDateStr,
+        isLiveVisaUsed,
+        forcedPtaxDebug: isForcedPtax,
       });
     } catch (err) {
       console.error(err);
@@ -825,8 +1026,8 @@ const CurrencyConverterPage = () => {
       `💱 Conversão de ${formatCurrencyBR(result.foreignCurrencyAmount, 2)} ${result.foreignCurrencyCode}:\n` +
       `• PTAX Venda: R$ ${formatCurrencyBR(result.ptaxRate, 4)}\n`;
 
-    if (result.networkAdjustmentPercentage > 0) {
-      textToCopy += `• Ajuste Bandeira (${formatCurrencyBR(result.networkAdjustmentPercentage, 2)}%): + R$ ${formatCurrencyBR(result.networkAdjustmentValue, 4)}\n`;
+    if (result.equivalentAmountUSD && result.foreignCurrencyCode !== "USD") {
+      textToCopy += `• Conversão Bandeira (${result.foreignCurrencyCode} → USD): USD ${formatCurrencyBR(result.equivalentAmountUSD, 2)}\n`;
     }
 
     textToCopy +=
@@ -848,7 +1049,7 @@ const CurrencyConverterPage = () => {
         • <strong>3,50%</strong> padrão para contas globais e cartões comuns.
       </span>
       <span className="block text-slate-400">
-        • <strong>0,00%</strong> para cartões isentos (Porto Bank, BTG, Caixa Visa, Nubank Ultravioleta).
+        • <strong>0,00%</strong> para cartões isentos (Porto Bank, BTG, Caixa Visa, Nubank Ultravioleta, ARQ, Meli Dólar).
       </span>
       <span className="block text-slate-400">
         • <strong>1,10%</strong> para Banco do Brasil Premium.
@@ -857,24 +1058,54 @@ const CurrencyConverterPage = () => {
   );
 
   const renderCustoTotalTooltipContent = () => (
-    <span className="block space-y-1 text-left max-w-xs p-1">
-      <span className="block font-semibold text-sky-300 mb-1">
+    <span className="block space-y-1 text-left max-w-xs p-0.5">
+      <span className="block font-semibold text-slate-300 mb-1">
+        Exemplo prático (1,00 USD = 5,00 BRL)
+      </span>
+      <span className="block text-sky-300 font-medium">
         Fórmula: (1 + Spread) × (1 + IOF) - 1
       </span>
-      <span className="block text-slate-300">
-        <strong>Exemplo prático (100 USD | PTAX R$ 5,00):</strong>
+      <span className="block text-slate-400">
+        1. USD + 5% Spread = <strong>R$ 5,2500</strong>
       </span>
-      <span className="block text-slate-300">
-        1. PTAX + 5% Spread = <strong>R$ 5,2500</strong>
-      </span>
-      <span className="block text-slate-300">
+      <span className="block text-slate-400">
         2. IOF 3,5% sobre R$ 5,2500 = <strong>+ R$ 0,18375</strong>
       </span>
-      <span className="block text-slate-300">
-        3. Cotação Final BRL = <strong>R$ 5,43375</strong>
+      <span className="block text-slate-400">
+        3. Cotação final em BRL = <strong>R$ 5,43375</strong>
       </span>
-      <span className="block text-sky-300 font-medium pt-1 border-t border-slate-600 mt-1">
+      <span className="block text-sky-400 font-medium pt-1 border-t border-slate-600 mt-1">
         Custo Efetivo: (1,05 × 1,035 - 1) = <strong>8,68%</strong> (e não 8,50%).
+      </span>
+    </span>
+  );
+
+  const renderBandeiraTooltipContent = () => (
+    <span className="block space-y-1.5 text-left max-w-xs p-1">
+      <span className="block font-semibold text-slate-300 mb-1">
+        Conversores Oficiais das Bandeiras:
+      </span>
+      <span className="block text-slate-400 text-xs">
+        •{" "}
+        <a
+          href="https://usa.visa.com/support/consumer/travel-support/exchange-rate-calculator.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sky-400 hover:text-sky-300 underline font-medium"
+        >
+          Calculadora de Cotação da Visa
+        </a>
+      </span>
+      <span className="block text-slate-400 text-xs">
+        •{" "}
+        <a
+          href="https://www.mastercard.com/us/en/personal/get-support/currency-exchange-rate-converter.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sky-400 hover:text-sky-300 underline font-medium"
+        >
+          Calculadora de Cotação da Mastercard
+        </a>
       </span>
     </span>
   );
@@ -1093,8 +1324,13 @@ const CurrencyConverterPage = () => {
         {result && !error && selectedBankKey && BANKS[selectedBankKey] && (
           <div className="mt-8 pt-6 border-t border-slate-700 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-sky-400">
+              <h2 className="text-xl font-semibold text-sky-400 flex items-center gap-2">
                 Resultado da Conversão:
+                {result.forcedPtaxDebug && (
+                  <span className="text-xs bg-amber-600/40 border border-amber-500 text-amber-300 px-2 py-0.5 rounded font-normal flex items-center gap-1">
+                    <Bug className="h-3 w-3" /> Modo Teste (Forçar PTAX)
+                  </span>
+                )}
               </h2>
               <button
                 type="button"
@@ -1114,12 +1350,32 @@ const CurrencyConverterPage = () => {
             </div>
 
             {/* Disclaimer for non-USD currencies */}
-            {selectedCurrency !== "USD" && (
+            {selectedCurrency !== "USD" && result.equivalentAmountUSD && (
               <div className="bg-slate-700/60 border border-slate-600 p-3 rounded-lg text-xs text-slate-300 flex items-start gap-2">
                 <Info className="h-4 w-4 text-sky-400 flex-shrink-0 mt-0.5" />
                 <div>
                   <strong>Conversão em duas etapas ({selectedCurrency} → USD → BRL):</strong>{" "}
-                  Compras em {selectedCurrency} são convertidas primeiro para Dólar pela cotação oficial da bandeira (Visa/Mastercard, com ajuste médio de ~{formatCurrencyBR(result.networkAdjustmentPercentage, 2)}%) e depois convertidas para Real pelo seu banco.
+                  {result.isLiveVisaUsed ? (
+                    <>
+                      Sua compra de {formatCurrencyBR(result.foreignCurrencyAmount, 2)} {selectedCurrency} é convertida primeiro para Dólar pela{" "}
+                      <Tooltip content={renderBandeiraTooltipContent()}>
+                        <span className="underline decoration-dotted cursor-help text-sky-400 hover:text-sky-300 font-medium">
+                          cotação oficial da bandeira
+                        </span>
+                      </Tooltip>{" "}
+                      (1 {selectedCurrency} = {formatCurrencyBR(result.visaUnitRate ?? (result.equivalentAmountUSD / result.foreignCurrencyAmount), 4)} USD) e depois convertida para Real pelo seu banco.
+                    </>
+                  ) : (
+                    <>
+                      A consulta em tempo real à{" "}
+                      <Tooltip content={renderBandeiraTooltipContent()}>
+                        <span className="underline decoration-dotted cursor-help text-sky-400 hover:text-sky-300 font-medium">
+                          bandeira
+                        </span>
+                      </Tooltip>{" "}
+                      esteve indisponível. Utilizamos a estimativa pela PTAX do Banco Central (1 {selectedCurrency} ≈ {formatCurrencyBR(result.rateWithNetwork / result.ptaxRate, 4)} USD). O valor final cobrado pelo seu banco pode variar ligeiramente.
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -1129,13 +1385,23 @@ const CurrencyConverterPage = () => {
               <div className="bg-sky-950/60 border border-sky-800 p-3 rounded-lg text-xs text-sky-200 flex items-start gap-2">
                 <Info className="h-4 w-4 text-sky-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <strong>Observação:</strong> O Meli Dólar é uma moeda virtual do Mercado Pago que faz paridade com o Dólar real, e pode ser usada no lugar do Dólar real para pagamentos internacionais usando o cartão de débito do Mercado Pago.
+                  <strong>Observação:</strong> O Meli Dólar é uma moeda virtual do Mercado Pago que faz paridade com o Dólar real, e pode ser usada no lugar do Dólar real para pagamentos internacionais usando o cartão de débito do Mercado Pago. Por ser uma moeda virtual, o valor final pode não ser exato pois a cotação não se baseia estritamente na PTAX do Banco Central.
+                </div>
+              </div>
+            )}
+
+            {/* Special Notice for ARQ */}
+            {selectedBankKey === "ARQ" && (
+              <div className="bg-sky-950/60 border border-sky-800 p-3 rounded-lg text-xs text-sky-200 flex items-start gap-2">
+                <Info className="h-4 w-4 text-sky-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <strong>Observação:</strong> A ARQ é uma conta global baseada na moeda virtual USDc (criptomoeda pareada ao Dólar real). Por ser uma moeda virtual com cotação própria de mercado, o valor final pode não ser exato pois a conversão não se baseia estritamente na PTAX do Banco Central.
                 </div>
               </div>
             )}
 
             {/* Savings Banner ONLY if potential savings > R$ 0,50 (selected bank total fee > 3.50%) */}
-            {result.potentialSavingsBRL > 0.5 && (
+            {selectedBankKey !== "Meli Dólar" && selectedBankKey !== "ARQ" && result.potentialSavingsBRL > 0.5 && (
               <div className="bg-sky-950/60 border border-sky-800 p-3 rounded-lg flex items-start gap-2 text-sky-200 text-sm">
                 <Sparkles className="h-5 w-5 text-sky-400 flex-shrink-0 mt-0.5" />
                 <div>
@@ -1152,28 +1418,49 @@ const CurrencyConverterPage = () => {
             {/* Breakdown List */}
             <div className="space-y-3">
               {(() => {
+                const isVisaUsed = result.foreignCurrencyCode !== "USD" && result.isLiveVisaUsed;
+
                 const items: ResultDisplayItem[] = [
                   {
                     icon: <Clock className="h-5 w-5" />,
-                    label: `Última Atualização PTAX`,
-                    value: formatPtaxDateTime(result.ptaxDateTime),
-                  },
-                  {
-                    icon: <Globe className="h-5 w-5" />,
-                    label: `Cotação ${result.foreignCurrencyCode} (PTAX Venda)`,
-                    value: `R$ ${formatCurrencyBR(result.ptaxRate, 4)}`,
+                    label: isVisaUsed ? `Última Atualização da Bandeira` : `Última Atualização PTAX`,
+                    value: isVisaUsed
+                      ? (result.visaDate || formatDateForAPI(new Date()))
+                      : formatPtaxDateTime(result.ptaxDateTime),
                   },
                 ];
 
-                if (result.networkAdjustmentPercentage > 0) {
+                if (result.foreignCurrencyCode === "USD") {
                   items.push({
-                    icon: <Percent className="h-5 w-5" />,
-                    label: `Ajuste Bandeira Visa/Mastercard (+${formatCurrencyBR(
-                      result.networkAdjustmentPercentage,
-                      2
-                    )}%)`,
-                    value: `+ R$ ${formatCurrencyBR(result.networkAdjustmentValue, 4)}`,
+                    icon: <Globe className="h-5 w-5" />,
+                    label: `Cotação USD (PTAX)`,
+                    value: `R$ ${formatCurrencyBR(result.ptaxRate, 4)}`,
                   });
+                } else {
+                  if (result.isLiveVisaUsed && result.equivalentAmountUSD) {
+                    items.push({
+                      icon: <DollarSign className="h-5 w-5" />,
+                      label: `Conversão da Bandeira (${result.foreignCurrencyCode} → USD)`,
+                      value: `USD ${formatCurrencyBR(result.equivalentAmountUSD, 2)}`,
+                    });
+                  } else {
+                    items.push({
+                      icon: <Globe className="h-5 w-5" />,
+                      label: `Cotação ${result.foreignCurrencyCode} (PTAX)`,
+                      value: `R$ ${formatCurrencyBR(result.ptaxRate, 4)}`,
+                    });
+
+                    if (result.networkAdjustmentPercentage > 0) {
+                      items.push({
+                        icon: <Percent className="h-5 w-5" />,
+                        label: `Ajuste Bandeira Visa/Mastercard (+${formatCurrencyBR(
+                          result.networkAdjustmentPercentage,
+                          2
+                        )}%)`,
+                        value: `+ R$ ${formatCurrencyBR(result.networkAdjustmentValue, 4)}`,
+                      });
+                    }
+                  }
                 }
 
                 items.push(
@@ -1217,7 +1504,15 @@ const CurrencyConverterPage = () => {
                   isTotal: true,
                 });
 
-                const NUM_COLOR_A_ITEMS = result.networkAdjustmentPercentage > 0 ? 5 : 4;
+                const NUM_COLOR_A_ITEMS =
+                  result.foreignCurrencyCode === "USD"
+                    ? 2
+                    : result.isLiveVisaUsed
+                    ? 2
+                    : result.networkAdjustmentPercentage > 0
+                    ? 3
+                    : 2;
+
                 return items.map((item, index) => (
                   <div
                     key={index}
@@ -1262,19 +1557,19 @@ const CurrencyConverterPage = () => {
         <div>
           O custo total é{" "}
           <Tooltip content={renderCustoTotalTooltipContent()}>
-            <span className="underline decoration-dotted cursor-help text-sky-400 hover:text-sky-300">
+            <span className="underline decoration-dotted cursor-help text-sky-400 hover:text-sky-300 font-medium">
               calculado
             </span>
           </Tooltip>{" "}
           considerando que o IOF incide somente após a conversão com o spread do banco.
         </div>
         <div>
-          Valores aproximados para moedas que não sejam USD (inclui margem de conversão da bandeira).
+          Valores aproximados para moedas que não sejam USD (inclui cotação oficial da bandeira ou margem estimada).
         </div>
         <div>
           Cotações PTAX fornecidas pelo Banco Central do Brasil. Spread e{" "}
           <Tooltip content={renderIofTooltipContent()}>
-            <span className="underline decoration-dotted cursor-help text-sky-400 hover:text-sky-300">
+            <span className="underline decoration-dotted cursor-help text-sky-400 hover:text-sky-300 font-medium">
               IOF
             </span>
           </Tooltip>{" "}
