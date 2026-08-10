@@ -15,6 +15,10 @@ import {
   Percent,
   Info,
   Bug,
+  Trophy,
+  Award,
+  Medal,
+  X,
 } from "lucide-react";
 
 // --- CONSTANTS, INTERFACES, and HELPER FUNCTIONS ---
@@ -64,8 +68,8 @@ const BANKS: Record<string, BankData> = {
     defaultIof: 3.5,
     points: "Não",
   },
-  "Mercado Pago": {
-    name: "Mercado Pago",
+  "Mercado Pago - Crédito": {
+    name: "Mercado Pago - Crédito",
     type: "Cartão de Crédito",
     spread: 0.0,
     defaultIof: 3.5,
@@ -129,8 +133,8 @@ const BANKS: Record<string, BankData> = {
     defaultIof: 3.5,
     points: "Sim",
   },
-  "Meli Dólar": {
-    name: "Meli Dólar",
+  "Mercado Pago - Débito": {
+    name: "Mercado Pago - Débito",
     type: "Conta Global",
     spread: 0.65,
     defaultIof: 0.0,
@@ -481,6 +485,7 @@ interface CalculationResult {
   visaDate?: string;
   isLiveVisaUsed?: boolean;
   forcedPtaxDebug?: boolean;
+  usdPtaxRateUsed?: number;
 }
 interface ResultDisplayItem {
   icon: React.ReactNode;
@@ -499,6 +504,16 @@ interface BankOption {
 interface BankGroup {
   label: string;
   banks: BankOption[];
+}
+interface BankComparisonItem {
+  key: string;
+  name: string;
+  spread: number;
+  defaultIof: number;
+  effectiveTotalFee: number;
+  totalBRL: number;
+  diffBRL: number;
+  rank: number;
 }
 
 // --- HELPER FUNCTIONS ---
@@ -551,6 +566,75 @@ const formatPtaxDateTime = (dateTimeString: string): string => {
 
 const getEffectiveTotalFee = (spread: number, iof: number): number => {
   return ((1 + spread / 100) * (1 + iof / 100) - 1) * 100;
+};
+
+// RECALCULATE LOGIC WITHOUT RE-FETCHING API
+const recalculateWithAmount = (
+  amount: number,
+  currentResult: CalculationResult,
+  bankKey: string
+): CalculationResult => {
+  const bank = BANKS[bankKey];
+  if (!bank) return currentResult;
+
+  const ptaxRate = currentResult.ptaxRate;
+  const usdPtaxRate = currentResult.usdPtaxRateUsed || ptaxRate;
+  const bankSpreadPercentage = bank.spread;
+
+  let equivalentAmountUSD = currentResult.equivalentAmountUSD;
+  let bankSpreadValue = 0;
+  let rateWithSpread = 0;
+  let amountInBRLNoIOF = 0;
+
+  const unitVisaRate =
+    currentResult.isLiveVisaUsed && currentResult.equivalentAmountUSD
+      ? currentResult.visaUnitRate ||
+        currentResult.equivalentAmountUSD / currentResult.foreignCurrencyAmount
+      : 0;
+
+  if (currentResult.isLiveVisaUsed && unitVisaRate > 0) {
+    equivalentAmountUSD = amount * unitVisaRate;
+    const usdValueNoSpread = equivalentAmountUSD * usdPtaxRate;
+    bankSpreadValue = (usdValueNoSpread * bankSpreadPercentage) / 100 / (amount || 1);
+    rateWithSpread =
+      usdPtaxRate * (1 + bankSpreadPercentage / 100) * (equivalentAmountUSD / (amount || 1));
+    amountInBRLNoIOF = usdValueNoSpread * (1 + bankSpreadPercentage / 100);
+  } else {
+    if (currentResult.foreignCurrencyCode !== "USD" && usdPtaxRate > 0) {
+      equivalentAmountUSD = (amount * currentResult.rateWithNetwork) / usdPtaxRate;
+    }
+    bankSpreadValue = currentResult.rateWithNetwork * (bankSpreadPercentage / 100);
+    rateWithSpread = currentResult.rateWithNetwork + bankSpreadValue;
+    amountInBRLNoIOF = amount * rateWithSpread;
+  }
+
+  const iofRateToUse = bank.defaultIof / 100;
+  const iofValue = amountInBRLNoIOF * iofRateToUse;
+  const totalAmountInBRL = amountInBRLNoIOF + iofValue;
+
+  const standardBenchmarkFeePercent = 0.035;
+  const benchmarkAmountBRL =
+    amount * currentResult.rateWithNetwork * (1 + standardBenchmarkFeePercent);
+  const bankTotalFeePercent = getEffectiveTotalFee(bank.spread, bank.defaultIof) / 100;
+
+  let potentialSavingsBRL = 0;
+  if (bankTotalFeePercent > 0.03501) {
+    potentialSavingsBRL = Math.max(0, totalAmountInBRL - benchmarkAmountBRL);
+  }
+
+  return {
+    ...currentResult,
+    foreignCurrencyAmount: amount,
+    equivalentAmountUSD,
+    bankSpreadValue,
+    rateWithSpread,
+    amountInBRLNoIOF,
+    iofValue,
+    totalAmountInBRL,
+    potentialSavingsBRL,
+    bankSpreadPercentage,
+    bankDefaultIof: bank.defaultIof,
+  };
 };
 
 // FUNÇÃO EXECUTADA DIRETAMENTE NO NAVEGADOR (CLIENT-SIDE)
@@ -675,7 +759,7 @@ const createGroupedBankOptions = (
     ];
     allBanks.forEach((bank) => {
       if (bank.spread === 0) groupDefinitions[0].banks.push(bank);
-      else if (bank.spread <= 1) groupDefinitions[1].banks.push(bank);
+      else if (bank.spread <= 1) groupDefinitions[0].banks.push(bank);
       else if (bank.spread <= 2) groupDefinitions[2].banks.push(bank);
       else if (bank.spread <= 3) groupDefinitions[3].banks.push(bank);
       else if (bank.spread <= 4) groupDefinitions[4].banks.push(bank);
@@ -800,6 +884,39 @@ const CurrencyConverterPage = () => {
   const [result, setResult] = useState<CalculationResult | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
 
+  // Modal Comparison State (Customizable 2 or 3 Banks)
+  const [isCompareModalOpen, setIsCompareModalOpen] = useState<boolean>(false);
+  const [compareBank1, setCompareBank1] = useState<string>("");
+  const [compareBank2, setCompareBank2] = useState<string>("");
+
+  // Handler para alterar valor e recalcular em tempo real caso já tenha resultado carregado
+  const handleAmountChange = (newAmountStr: string) => {
+    setPurchaseAmount(newAmountStr);
+    const num = parseFloat(newAmountStr.replace(",", "."));
+    if (!isNaN(num) && num > 0 && result) {
+      setResult((prevResult) =>
+        prevResult ? recalculateWithAmount(num, prevResult, selectedBankKey) : null
+      );
+    }
+  };
+
+  // Handler para trocar de banco selecionado e recalcular em tempo real
+  const handleBankChange = (newBankKey: string) => {
+    setSelectedBankKey(newBankKey);
+    if (result && BANKS[newBankKey]) {
+      setResult((prevResult) =>
+        prevResult
+          ? recalculateWithAmount(prevResult.foreignCurrencyAmount, prevResult, newBankKey)
+          : null
+      );
+    }
+  };
+
+  // Lista em ordem alfabética para os seletores do modal
+  const alphabeticalBankList = useMemo(() => {
+    return Object.entries(BANKS).sort((a, b) => a[1].name.localeCompare(b[1].name));
+  }, []);
+
   // EXPOR FUNÇÃO DE DEBUG TOGGLE NO CONSOLE DO NAVEGADOR
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -830,13 +947,69 @@ const CurrencyConverterPage = () => {
     }
   }, [selectedBankKey, isBankHydrated]);
 
+  // Reseta resultado apenas se a moeda mudar (pois exige nova cotação da API)
   useEffect(() => {
     setResult(null);
-  }, [selectedCurrency, purchaseAmount, selectedBankKey]);
+  }, [selectedCurrency]);
 
   const groupedBanks = useMemo(() => {
     return createGroupedBankOptions(BANKS, sortMode);
   }, [sortMode]);
+
+  // All banks sorted by total cost for comparison
+  const allBanksRanked = useMemo(() => {
+    if (!result) return [];
+
+    const amount = result.foreignCurrencyAmount;
+    const ptaxRate = result.ptaxRate;
+    const usdPtaxRate = result.usdPtaxRateUsed || ptaxRate;
+
+    const unitVisaRate =
+      result.isLiveVisaUsed && result.equivalentAmountUSD
+        ? result.visaUnitRate || result.equivalentAmountUSD / result.foreignCurrencyAmount
+        : 0;
+
+    const calculations: BankComparisonItem[] = Object.entries(BANKS).map(
+      ([key, bank]) => {
+        let amountBRLNoIOF = 0;
+        if (result.isLiveVisaUsed && unitVisaRate > 0) {
+          const eqUSD = amount * unitVisaRate;
+          const usdValueNoSpread = eqUSD * usdPtaxRate;
+          amountBRLNoIOF = usdValueNoSpread * (1 + bank.spread / 100);
+        } else {
+          amountBRLNoIOF = amount * result.rateWithNetwork * (1 + bank.spread / 100);
+        }
+        const iofVal = amountBRLNoIOF * (bank.defaultIof / 100);
+        const totalBRL = amountBRLNoIOF + iofVal;
+        const effectiveTotalFee = getEffectiveTotalFee(bank.spread, bank.defaultIof);
+
+        return {
+          key,
+          name: bank.name,
+          spread: bank.spread,
+          defaultIof: bank.defaultIof,
+          effectiveTotalFee,
+          totalBRL,
+          diffBRL: 0,
+          rank: 0,
+        };
+      }
+    );
+
+    calculations.sort((a, b) => a.totalBRL - b.totalBRL || a.name.localeCompare(b.name));
+
+    return calculations;
+  }, [result]);
+
+  // Abre o modal e inicializa as opções apenas uma vez no clique
+  const handleOpenCompareModal = useCallback(() => {
+    if (allBanksRanked.length > 0) {
+      const available = allBanksRanked.filter((b) => b.key !== selectedBankKey);
+      setCompareBank1(available[0] ? available[0].key : "");
+      setCompareBank2(available[1] ? available[1].key : "");
+    }
+    setIsCompareModalOpen(true);
+  }, [allBanksRanked, selectedBankKey]);
 
   const handleCalculate = useCallback(async () => {
     setError(null);
@@ -919,7 +1092,7 @@ const CurrencyConverterPage = () => {
       // If neither Visa nor PTAX available for selected currency
       if (!isLiveVisaUsed && ptaxRate <= 0) {
         setError(
-          `Não foi possível obter a cotação para ${selectedCurrency}: a consulta em tempo real à bandeira esteve indisponível e esta moeda não possui cotação PTAX direta fornecida pelo Banco Central. Por favor, tente novamente mais tarde.`
+          `Não foi possível obter a cotação para ${selectedCurrency}: a consulta em tempo real à bandeira esteve indisponível e esta moeda não possui cotação PTAX direta fornecida pelo Banco Central.`
         );
         setResult(null);
         setIsLoading(false);
@@ -938,7 +1111,7 @@ const CurrencyConverterPage = () => {
         }
       }
 
-      // Fallback network adjustment calculation if Visa rate is not used
+      // Fallback network adjustment calculation if Visa rate fails
       const currencyData = CURRENCIES.find((c) => c.code === selectedCurrency);
       const networkAdjustmentPercentage = currencyData?.networkAdjustment ?? 0;
       const networkAdjustmentValue = ptaxRate * (networkAdjustmentPercentage / 100);
@@ -1006,6 +1179,7 @@ const CurrencyConverterPage = () => {
         visaDate: visaDateStr,
         isLiveVisaUsed,
         forcedPtaxDebug: isForcedPtax,
+        usdPtaxRateUsed: usdPtaxRate,
       });
     } catch (err) {
       console.error(err);
@@ -1031,7 +1205,7 @@ const CurrencyConverterPage = () => {
     }
 
     textToCopy +=
-      `• Spread (${bank.name}): ${formatCurrencyBR(result.bankSpreadPercentage, 2)}%\n` +
+      `• Spread ${bank.name} (${formatCurrencyBR(result.bankSpreadPercentage, 2)}%):\n` +
       `• IOF: ${formatCurrencyBR(result.bankDefaultIof, 1)}%\n` +
       `• Total Final: R$ ${formatCurrencyBR(result.totalAmountInBRL, 2)}`;
 
@@ -1039,6 +1213,27 @@ const CurrencyConverterPage = () => {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  // Selected comparison items for modal
+  const selectedComparisonItems = useMemo(() => {
+    if (!result || allBanksRanked.length === 0) return [];
+
+    const keys = [selectedBankKey, compareBank1, compareBank2].filter(Boolean);
+    const uniqueKeys = Array.from(new Set(keys));
+
+    const selectedList = allBanksRanked.filter((item) => uniqueKeys.includes(item.key));
+    selectedList.sort((a, b) => a.totalBRL - b.totalBRL);
+
+    if (selectedList.length > 0) {
+      const cheapest = selectedList[0].totalBRL;
+      selectedList.forEach((item, idx) => {
+        item.rank = idx + 1;
+        item.diffBRL = item.totalBRL - cheapest;
+      });
+    }
+
+    return selectedList;
+  }, [result, allBanksRanked, selectedBankKey, compareBank1, compareBank2]);
 
   const renderIofTooltipContent = () => (
     <span className="block space-y-1 text-left max-w-xs">
@@ -1049,7 +1244,7 @@ const CurrencyConverterPage = () => {
         • <strong>3,50%</strong> padrão para contas globais e cartões comuns.
       </span>
       <span className="block text-slate-400">
-        • <strong>0,00%</strong> para cartões isentos (Porto Bank, BTG, Caixa Visa, Nubank Ultravioleta, ARQ, Meli Dólar).
+        • <strong>0,00%</strong> para cartões isentos (Porto Bank, BTG, Caixa Visa, Nubank Ultravioleta, ARQ, Mercado Pago Débito).
       </span>
       <span className="block text-slate-400">
         • <strong>1,10%</strong> para Banco do Brasil Premium.
@@ -1066,7 +1261,7 @@ const CurrencyConverterPage = () => {
         Fórmula: (1 + Spread) × (1 + IOF) - 1
       </span>
       <span className="block text-slate-400">
-        1. USD + 5% Spread = <strong>R$ 5,2500</strong>
+        1. 1 USD + 5% Spread = <strong>R$ 5,2500</strong>
       </span>
       <span className="block text-slate-400">
         2. IOF 3,5% sobre R$ 5,2500 = <strong>+ R$ 0,18375</strong>
@@ -1167,18 +1362,18 @@ const CurrencyConverterPage = () => {
                 type="number"
                 id="amount"
                 value={purchaseAmount}
-                onChange={(e) => setPurchaseAmount(e.target.value)}
+                onChange={(e) => handleAmountChange(e.target.value)}
                 placeholder="Ex: 100,00"
                 className="w-full pl-10 pr-3 py-2.5 bg-slate-700 border border-slate-600 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
               />
             </div>
-            {/* Quick Presets */}
-            <div className="flex gap-2 mt-2">
-              {["100", "500", "1000", "5000"].map((preset) => (
+            {/* Quick Presets - Incluídos os valores 10 e 50 */}
+            <div className="flex flex-wrap gap-2 mt-2">
+              {["10", "50", "100", "500", "1000", "5000"].map((preset) => (
                 <button
                   key={preset}
                   type="button"
-                  onClick={() => setPurchaseAmount(preset)}
+                  onClick={() => handleAmountChange(preset)}
                   className="px-2.5 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-300 transition cursor-pointer"
                 >
                   ${Number(preset).toLocaleString("en-US")}
@@ -1257,7 +1452,7 @@ const CurrencyConverterPage = () => {
                 <select
                   id="bank"
                   value={selectedBankKey}
-                  onChange={(e) => setSelectedBankKey(e.target.value)}
+                  onChange={(e) => handleBankChange(e.target.value)}
                   className="w-full pl-10 pr-3 py-2.5 bg-slate-700 border border-slate-600 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none appearance-none"
                   disabled={!selectedBankKey}
                 >
@@ -1314,39 +1509,75 @@ const CurrencyConverterPage = () => {
         {error && (
           <div
             role="alert"
-            className="mt-6 p-3 bg-red-900/30 border border-red-700 text-red-300 rounded-md flex items-center"
+            className="mt-6 p-3.5 bg-red-900/30 border border-red-700 text-red-300 rounded-md flex items-start gap-2 text-sm"
           >
-            <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0" />
-            <span>{error}</span>
+            <AlertTriangle className="h-5 w-5 mr-1 mt-0.5 flex-shrink-0" />
+            <div>
+              <span>{error}</span>{" "}
+              <span className="block mt-1">
+                Ou tente a conversão diretamente na{" "}
+                <a
+                  href="https://usa.visa.com/support/consumer/travel-support/exchange-rate-calculator.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sky-400 hover:text-sky-300 underline font-medium"
+                >
+                  Calculadora da Visa
+                </a>{" "}
+                ou na{" "}
+                <a
+                  href="https://www.mastercard.com/us/en/personal/get-support/currency-exchange-rate-converter.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sky-400 hover:text-sky-300 underline font-medium"
+                >
+                  Calculadora da Mastercard
+                </a>{" "}
+                para obter um valor aproximado.
+              </span>
+            </div>
           </div>
         )}
 
         {result && !error && selectedBankKey && BANKS[selectedBankKey] && (
           <div className="mt-8 pt-6 border-t border-slate-700 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-sky-400 flex items-center gap-2">
+            {/* Forced PTAX Debug Indicator positioned above header */}
+            {result.forcedPtaxDebug && (
+              <div>
+                <span className="inline-flex items-center gap-1.5 text-xs bg-amber-600/40 border border-amber-500 text-amber-300 px-2.5 py-1 rounded font-normal">
+                  <Bug className="h-3.5 w-3.5" /> Modo Teste (Forçar PTAX Ativado)
+                </span>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-xl font-semibold text-sky-400">
                 Resultado da Conversão:
-                {result.forcedPtaxDebug && (
-                  <span className="text-xs bg-amber-600/40 border border-amber-500 text-amber-300 px-2 py-0.5 rounded font-normal flex items-center gap-1">
-                    <Bug className="h-3 w-3" /> Modo Teste (Forçar PTAX)
-                  </span>
-                )}
               </h2>
-              <button
-                type="button"
-                onClick={handleCopySummary}
-                className="flex items-center gap-1.5 text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded border border-slate-600 transition cursor-pointer"
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-3.5 w-3.5 text-teal-400" /> Copiado!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-3.5 w-3.5 text-slate-300" /> Copiar Resumo
-                  </>
-                )}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenCompareModal}
+                  className="flex items-center gap-1.5 text-xs bg-sky-700 hover:bg-sky-600 text-white font-medium px-3 py-1.5 rounded transition cursor-pointer"
+                >
+                  <Trophy className="h-3.5 w-3.5 text-amber-300" /> Comparar Opções
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopySummary}
+                  className="flex items-center gap-1.5 text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded border border-slate-600 transition cursor-pointer"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-teal-400" /> Copiado!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5 text-slate-300" /> Copiar Resumo
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Disclaimer for non-USD currencies */}
@@ -1380,12 +1611,12 @@ const CurrencyConverterPage = () => {
               </div>
             )}
 
-            {/* Special Notice for Meli Dólar */}
-            {selectedBankKey === "Meli Dólar" && (
+            {/* Special Notice for Mercado Pago - Débito */}
+            {selectedBankKey === "Mercado Pago - Débito" && (
               <div className="bg-sky-950/60 border border-sky-800 p-3 rounded-lg text-xs text-sky-200 flex items-start gap-2">
                 <Info className="h-4 w-4 text-sky-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <strong>Observação:</strong> O Meli Dólar é uma moeda virtual do Mercado Pago que faz paridade com o Dólar real, e pode ser usada no lugar do Dólar real para pagamentos internacionais usando o cartão de débito do Mercado Pago. Por ser uma moeda virtual, o valor final pode não ser exato pois a cotação não se baseia estritamente na PTAX do Banco Central.
+                  <strong>Observação:</strong> Para este cálculo foi utilizado o Meli Dólar, a moeda virtual do Mercado Pago que possui paridade com o dólar americano. Ela pode ser usada em pagamentos internacionais com o cartão de débito do Mercado Pago, desde que a funcionalidade esteja ativada no aplicativo, caso contrário a cobrança será realizada com os custos iguais os da função crédito. Por se tratar de uma moeda virtual, sua cotação não segue estritamente a PTAX do Banco Central e o valor final pode apresentar pequenas variações em relação ao calculated. O spread informado de 0,65% é uma estimativa, que geralmente oscila entre 0,60% e 0,70%.
                 </div>
               </div>
             )}
@@ -1395,13 +1626,13 @@ const CurrencyConverterPage = () => {
               <div className="bg-sky-950/60 border border-sky-800 p-3 rounded-lg text-xs text-sky-200 flex items-start gap-2">
                 <Info className="h-4 w-4 text-sky-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <strong>Observação:</strong> A ARQ é uma conta global baseada na moeda virtual USDc (criptomoeda pareada ao Dólar real). Por ser uma moeda virtual com cotação própria de mercado, o valor final pode não ser exato pois a conversão não se baseia estritamente na PTAX do Banco Central.
+                  <strong>Observação:</strong> A ARQ é uma conta global que utiliza o USDc, uma moeda virtual pareada 1:1 ao dólar americano. Por se tratar de uma moeda virtual, sua cotação não segue estritamente a PTAX do Banco Central e o valor final pode apresentar pequenas variações em relação ao calculated.
                 </div>
               </div>
             )}
 
             {/* Savings Banner ONLY if potential savings > R$ 0,50 (selected bank total fee > 3.50%) */}
-            {selectedBankKey !== "Meli Dólar" && selectedBankKey !== "ARQ" && result.potentialSavingsBRL > 0.5 && (
+            {selectedBankKey !== "Mercado Pago - Débito" && selectedBankKey !== "ARQ" && result.potentialSavingsBRL > 0.5 && (
               <div className="bg-sky-950/60 border border-sky-800 p-3 rounded-lg flex items-start gap-2 text-sky-200 text-sm">
                 <Sparkles className="h-5 w-5 text-sky-400 flex-shrink-0 mt-0.5" />
                 <div>
@@ -1410,7 +1641,7 @@ const CurrencyConverterPage = () => {
                   <strong className="text-teal-300">
                     R$ {formatCurrencyBR(result.potentialSavingsBRL, 2)}
                   </strong>{" "}
-                  nesta compra trocando para uma opção mais econômica (como Mercado Pago, Recarga Pay ou Nubank Ultravioleta).
+                  nesta compra trocando para uma opção mais econômica (como ARQ, Mercado Pago, Recarga Pay ou Nubank Ultravioleta).
                 </div>
               </div>
             )}
@@ -1466,7 +1697,7 @@ const CurrencyConverterPage = () => {
                 items.push(
                   {
                     icon: <Percent className="h-5 w-5" />,
-                    label: `Spread (${BANKS[selectedBankKey]?.name} - ${formatCurrencyBR(
+                    label: `Spread ${BANKS[selectedBankKey]?.name} (${formatCurrencyBR(
                       result.bankSpreadPercentage,
                       2
                     )}%)`,
@@ -1553,6 +1784,180 @@ const CurrencyConverterPage = () => {
         )}
       </div>
 
+      {/* COMPARISON MODAL (INTERACTIVE BANK SELECTOR & EDITABLE AMOUNT) */}
+      {isCompareModalOpen && result && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => setIsCompareModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-md transition cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-1">
+              <Trophy className="h-6 w-6 text-amber-400" />
+              <h3 className="text-xl font-bold text-white">
+                Comparativo de Bancos e Contas
+              </h3>
+            </div>
+            <p className="text-xs text-slate-400 mb-4">
+              Ajuste o valor e selecione as opções para comparar os valores finais em BRL recalculados em tempo real:
+            </p>
+
+            {/* CAMPO DE VALOR EDITÁVEL NO MODAL */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5 bg-slate-900/60 p-3 rounded-lg border border-slate-700">
+              <label htmlFor="modalAmount" className="text-xs font-semibold text-slate-300 whitespace-nowrap">
+                Valor da Compra ({result.foreignCurrencyCode}):
+              </label>
+              <div className="relative flex-1">
+                <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                  <DollarSign className="h-4 w-4 text-slate-400" />
+                </div>
+                <input
+                  id="modalAmount"
+                  type="number"
+                  value={purchaseAmount}
+                  onChange={(e) => handleAmountChange(e.target.value)}
+                  placeholder="Ex: 100"
+                  className="w-full pl-8 pr-3 py-1.5 bg-slate-800 border border-slate-600 rounded text-sm text-sky-300 font-bold focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
+                />
+              </div>
+            </div>
+
+            {/* INTERACTIVE BANK SELECTORS */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 p-3 bg-slate-900/60 rounded-lg border border-slate-700">
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                  Atual:
+                </label>
+                <select
+                  value={selectedBankKey}
+                  disabled
+                  className="w-full text-xs p-2 bg-slate-800/80 border border-slate-700 rounded text-slate-300 font-medium cursor-not-allowed opacity-80"
+                >
+                  <option value={selectedBankKey}>
+                    {BANKS[selectedBankKey]?.name || selectedBankKey}
+                  </option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                  Opção 1:
+                </label>
+                <select
+                  value={compareBank1}
+                  onChange={(e) => setCompareBank1(e.target.value)}
+                  className="w-full text-xs p-2 bg-slate-700 border border-slate-600 rounded text-slate-100 focus:ring-1 focus:ring-sky-500 outline-none cursor-pointer"
+                >
+                  {alphabeticalBankList.map(([k, b]) => (
+                    <option key={k} value={k}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                  Opção 2:
+                </label>
+                <select
+                  value={compareBank2}
+                  onChange={(e) => setCompareBank2(e.target.value)}
+                  className="w-full text-xs p-2 bg-slate-700 border border-slate-600 rounded text-slate-100 focus:ring-1 focus:ring-sky-500 outline-none cursor-pointer"
+                >
+                  <option value="">Nenhum</option>
+                  {alphabeticalBankList.map(([k, b]) => (
+                    <option key={k} value={k}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* RANKED COMPARISON CARDS */}
+            <div className="space-y-3 mb-6">
+              {selectedComparisonItems.map((item) => {
+                const isGold = item.rank === 1;
+                const isSilver = item.rank === 2;
+                const isBronze = item.rank === 3;
+                const isSelected = item.key === selectedBankKey;
+
+                return (
+                  <div
+                    key={item.key}
+                    className={`p-4 rounded-lg border transition ${
+                      isGold
+                        ? "bg-amber-950/30 border-amber-500/50"
+                        : isSilver
+                        ? "bg-slate-700/60 border-slate-400/40"
+                        : "bg-amber-950/10 border-amber-800/40"
+                    } ${isSelected ? "ring-2 ring-sky-400" : ""}`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        {isGold && <Trophy className="h-5 w-5 text-amber-400" />}
+                        {isSilver && <Award className="h-5 w-5 text-slate-300" />}
+                        {isBronze && <Medal className="h-5 w-5 text-amber-600" />}
+                        <span className="font-bold text-white text-base">
+                          {item.name}
+                        </span>
+                        {isSelected && (
+                          <span className="text-[10px] bg-sky-500 text-white font-semibold px-2 py-0.5 rounded-full">
+                            Selecionado
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-teal-300">
+                          R$ {formatCurrencyBR(item.totalBRL, 2)}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {item.diffBRL === 0 ? (
+                            <span className="text-teal-400 font-medium">🥇 Mais Econômico</span>
+                          ) : (
+                            <span className="text-amber-300">
+                              + R$ {formatCurrencyBR(item.diffBRL, 2)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300 pt-2 border-t border-slate-700/50">
+                      <div>
+                        Spread: <strong className="text-slate-100">{formatCurrencyBR(item.spread, 2)}%</strong>
+                      </div>
+                      <div>•</div>
+                      <div>
+                        IOF: <strong className="text-slate-100">{formatCurrencyBR(item.defaultIof, 1)}%</strong>
+                      </div>
+                      <div>•</div>
+                      <div>
+                        Custo Total: <strong className="text-sky-300">{formatCurrencyBR(item.effectiveTotalFee, 2)}%</strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsCompareModalOpen(false)}
+              className="w-full bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2.5 rounded-lg transition cursor-pointer"
+            >
+              Fechar Comparativo
+            </button>
+          </div>
+        </div>
+      )}
+
       <footer className="text-center text-sm text-slate-500 mt-8 pb-4 space-y-1.5 max-w-2xl mx-auto">
         <div>
           O custo total é{" "}
@@ -1564,7 +1969,7 @@ const CurrencyConverterPage = () => {
           considerando que o IOF incide somente após a conversão com o spread do banco.
         </div>
         <div>
-          Valores aproximados para moedas que não sejam USD (inclui cotação oficial da bandeira ou margem estimada).
+          Para moedas que não sejam USD, inclui cotação oficial da bandeira ou margem estimada.
         </div>
         <div>
           Cotações PTAX fornecidas pelo Banco Central do Brasil. Spread e{" "}
